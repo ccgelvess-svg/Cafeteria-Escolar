@@ -1,0 +1,6 @@
+{
+  "name": "@cafeteria-escolar/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Contratos y utilidades compartidas de CAFETERÍA ESCOLAR."
+}

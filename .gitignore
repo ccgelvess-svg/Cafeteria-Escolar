@@ -1,0 +1,41 @@
+# Dependencies and package-manager cache
+node_modules/
+.npm-cache/
+.gradle/
+.browser-test/
+
+# Build output
+dist/
+coverage/
+*.tsbuildinfo
+
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+
+# IDE and operating-system files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Capacitor / Android generated files
+apps/frontend/android/.gradle/
+apps/frontend/android/local.properties
+apps/frontend/android/app/build/
+apps/frontend/android/build/
+apps/frontend/android/captures/
+
+# Local databases and runtime data
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3

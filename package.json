@@ -1,0 +1,20 @@
+{
+  "name": "cafeteria-escolar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma offline-first para la gestión de una cafetería escolar.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @cafeteria-escolar/frontend",
+    "build": "npm run build --workspace @cafeteria-escolar/frontend",
+    "typecheck": "npm run typecheck --workspace @cafeteria-escolar/frontend",
+    "android": "npm run android:sync --workspace @cafeteria-escolar/frontend"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  }
+}
