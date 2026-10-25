@@ -2,9 +2,7 @@ import {
   Banknote,
   CircleDollarSign,
   ClipboardList,
-  Coins,
   History,
-  Info,
   Minus,
   Plus,
   RotateCcw,
@@ -18,9 +16,8 @@ interface CartPanelProps {
   mode: SaleMode
   student: Student | null
   cart: CartLine[]
-  cashReceived: number
+  paymentBusy: boolean
   canUndo: boolean
-  onCashReceivedChange: (value: number) => void
   onChangeQuantity: (productId: string, delta: number) => void
   onRemove: (productId: string) => void
   onClear: () => void
@@ -34,9 +31,8 @@ export function CartPanel({
   mode,
   student,
   cart,
-  cashReceived,
+  paymentBusy,
   canUndo,
-  onCashReceivedChange,
   onChangeQuantity,
   onRemove,
   onClear,
@@ -46,11 +42,9 @@ export function CartPanel({
   onRegisterPayment,
 }: CartPanelProps) {
   const total = cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0)
-  const change = Math.max(0, cashReceived - total)
-  const cashIsEnough = cashReceived >= total && total > 0
 
   return (
-    <aside className="pos-cart-panel flex min-h-0 min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+    <aside className="pos-cart-panel flex min-h-0 min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-[clamp(1.25rem,2vw,1.5rem)] font-black tracking-tight text-slate-950">Cuenta del cliente</h2>
@@ -79,7 +73,7 @@ export function CartPanel({
         <span className="min-w-20 text-right">Subtotal</span>
       </div>
 
-      <div className="cart-scroll-area min-h-32 flex-1 overflow-y-auto overscroll-contain rounded-b-lg border-x border-b border-slate-100">
+      <div className="cart-scroll-area min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-b-lg border-x border-b border-slate-100">
         {cart.length > 0 ? (
           cart.map(({ product, quantity }) => {
             const Icon = product.icon
@@ -135,47 +129,23 @@ export function CartPanel({
       </div>
 
       <div className="mt-2 flex items-center justify-between rounded-lg bg-slate-100 px-4 py-2">
-        <span className="text-lg font-bold text-slate-800">Consumo actual</span>
+        <span className="text-lg font-bold text-slate-800">Total</span>
         <strong className="text-2xl font-black text-slate-950">{formatCurrency(total)}</strong>
       </div>
 
       {mode === 'free' ? (
-        <>
-          <label className="mt-2 flex min-w-0 flex-wrap items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-emerald-900 sm:flex-nowrap">
-            <Banknote aria-hidden="true" className="size-7 shrink-0 text-emerald-700" />
-            <span className="flex-1 font-bold">Recibido (efectivo)</span>
-            <span className="flex min-h-11 min-w-32 flex-1 items-center rounded-lg border border-emerald-200 bg-white px-2 py-1 text-lg font-black text-slate-950 focus-within:ring-2 focus-within:ring-emerald-300 sm:max-w-48">
-              $
-              <input
-                aria-label="Efectivo recibido"
-                className="min-w-0 flex-1 bg-transparent text-right outline-none"
-                inputMode="numeric"
-                onChange={(event) => onCashReceivedChange(Number(event.target.value.replace(/\D/g, '')) || 0)}
-                value={cashReceived || ''}
-              />
-            </span>
-          </label>
-          <div className={`mt-2 flex items-center gap-3 rounded-lg px-3 py-2 ${cashIsEnough ? 'bg-amber-50' : 'bg-rose-50'}`}>
-            <Coins aria-hidden="true" className={`size-7 ${cashIsEnough ? 'text-amber-600' : 'text-rose-500'}`} />
-            <span className="flex-1 text-lg font-bold text-slate-800">Cambio</span>
-            <strong className={`text-2xl font-black ${cashIsEnough ? 'text-emerald-700' : 'text-rose-600'}`}>
-              {formatCurrency(change)}
-            </strong>
-          </div>
+        <div className="mt-2 grid gap-2">
           <button
             className="mt-2 inline-flex min-h-14 items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 text-[clamp(1.05rem,2vw,1.25rem)] font-black text-white shadow-md transition hover:brightness-105 disabled:cursor-not-allowed disabled:grayscale sm:min-h-16"
-            disabled={!cashIsEnough}
+            disabled={total <= 0 || paymentBusy}
             onClick={onPrimaryAction}
             type="button"
           >
             <Banknote aria-hidden="true" className="size-8" />
-            Pago en efectivo
+            {paymentBusy ? 'Registrando…' : 'Pago en efectivo'}
           </button>
-          <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-slate-500">
-            <Info aria-hidden="true" className="size-4 shrink-0 text-blue-600" />
-            Registra el monto recibido para calcular el cambio.
-          </p>
-        </>
+          <p className="text-center text-xs font-semibold text-slate-500">Se registrará como pagado por el total exacto.</p>
+        </div>
       ) : (
         <div className="mt-2 grid gap-2">
           <div className="flex items-center justify-between rounded-lg bg-indigo-50 px-3 py-2">
@@ -189,7 +159,7 @@ export function CartPanel({
             type="button"
           >
             <ClipboardList aria-hidden="true" className="size-6" />
-            Preparar consumo
+            Registrar consumo
           </button>
           <button
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-lg font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"

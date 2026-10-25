@@ -1,7 +1,21 @@
-import { useMemo, useState } from 'react'
-import { Info } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import {
+  Coffee,
+  Cookie,
+  Croissant,
+  CupSoda,
+  Droplet,
+  LayoutGrid,
+  Milk,
+  Package,
+  Pizza,
+  Sandwich,
+  Wheat,
+  Zap,
+} from 'lucide-react'
 
-import { products, subcategories } from './data'
+import { categories as staticCategories, products as staticProducts } from './data'
+import { formatCurrency } from './format'
 import type { CartLine, Product, SaleMode, Student } from './types'
 import { CartPanel } from './components/CartPanel'
 import { CustomerPanel } from './components/CustomerPanel'
@@ -10,19 +24,13 @@ import { FooterStatus } from './components/FooterStatus'
 import { ModeTabs } from './components/ModeTabs'
 import { ProductCatalog } from './components/ProductCatalog'
 import { TopBar } from './components/TopBar'
+import { cashSaleSignature, prepareCashPaymentAttempt, studentSaleSignature, type CashPaymentAttempt } from './cashPayment'
+import { useAuth } from '../auth'
+import { createIdempotencyKey, listStudentMovements, splitBalance, useStudents } from '../students'
+import { registerCashSale, registerStudentSale } from '../sales'
+import { useInventory } from '../inventory'
 
-function productById(id: string) {
-  const product = products.find((item) => item.id === id)
-  if (!product) throw new Error(`Producto de demostración no encontrado: ${id}`)
-  return product
-}
-
-const initialCart: CartLine[] = [
-  { product: productById('agua-pequena'), quantity: 1 },
-  { product: productById('pastel-carne'), quantity: 1 },
-  { product: productById('papas-medianas'), quantity: 1 },
-  { product: productById('gaseosa-pequena'), quantity: 1 },
-]
+const initialCart: CartLine[] = []
 
 interface DialogState {
   kind: DialogKind
@@ -32,16 +40,81 @@ interface DialogState {
 
 const closedDialog: DialogState = { kind: null, title: '', message: '' }
 
+function productVisual(item: { id: string; name: string; categorySlug: string; subcategory: string }) {
+  const predefined = staticProducts.find((product) => product.id === item.id)
+  if (predefined) return predefined
+
+  const text = `${item.name} ${item.subcategory}`.toLocaleLowerCase('es')
+  if (text.includes('pizza')) return { icon: Pizza, iconColor: 'text-red-600', tint: 'bg-red-50' }
+  if (/sándwich|sandwich|hamburguesa|perro|tostada|salchipapa/.test(text)) return { icon: Sandwich, iconColor: 'text-amber-700', tint: 'bg-yellow-50' }
+  if (text.includes('galleta')) return { icon: Cookie, iconColor: 'text-amber-700', tint: 'bg-orange-50' }
+  if (/croissant|hojaldrado|churro|empanada|arepa|pan|pastel/.test(text)) return { icon: Croissant, iconColor: 'text-orange-600', tint: 'bg-orange-50' }
+  if (text.includes('gatorade')) return { icon: Zap, iconColor: 'text-blue-600', tint: 'bg-amber-50' }
+  if (text.includes('agua')) return { icon: Droplet, iconColor: 'text-sky-600', tint: 'bg-sky-50' }
+  if (/gaseosa|jugo|hit|kalua|pony/.test(text)) return { icon: CupSoda, iconColor: 'text-orange-600', tint: 'bg-amber-50' }
+  if (/tea|té|lipton/.test(text)) return { icon: Coffee, iconColor: 'text-emerald-700', tint: 'bg-emerald-50' }
+  if (text.includes('leche')) return { icon: Milk, iconColor: 'text-blue-600', tint: 'bg-blue-50' }
+  if (text.includes('maní')) return { icon: Wheat, iconColor: 'text-lime-700', tint: 'bg-lime-50' }
+
+  const category = staticCategories.find((candidate) => candidate.id === item.categorySlug)
+  return { icon: category?.icon ?? Package, iconColor: 'text-blue-700', tint: 'bg-blue-50' }
+}
+
 export function PosPage() {
   const [mode, setMode] = useState<SaleMode>('free')
-  const [category, setCategory] = useState('bebidas')
-  const [subcategory, setSubcategory] = useState('Todas')
+  const [category, setCategory] = useState('todos')
+  const [subcategory, setSubcategory] = useState('Todos')
   const [cart, setCart] = useState<CartLine[]>(initialCart)
   const [undoStack, setUndoStack] = useState<CartLine[][]>([])
-  const [cashReceived, setCashReceived] = useState(10_000)
+  const [paymentBusy, setPaymentBusy] = useState(false)
   const [studentQuery, setStudentQuery] = useState('')
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [dialog, setDialog] = useState<DialogState>(closedDialog)
+  const purchaseInFlight = useRef(false)
+  const lastCommittedSale = useRef<string | null>(null)
+  const pendingCashSale = useRef<CashPaymentAttempt | null>(null)
+  const pendingStudentSale = useRef<CashPaymentAttempt | null>(null)
+  const { students: studentAccounts } = useStudents()
+  const { products: inventoryProducts, categories: inventoryCategories } = useInventory(false)
+  const { session, can } = useAuth()
+
+  const catalogProducts = useMemo<Product[]>(() => inventoryProducts.filter((item) => item.active).map((item) => {
+    const visual = productVisual(item)
+    return {
+      id: item.id,
+      name: item.name,
+      shortName: item.name,
+      price: item.price,
+      category: item.categorySlug,
+      subcategory: item.subcategory,
+      stockQuantity: item.stockQuantity,
+      tint: visual.tint,
+      icon: visual.icon,
+      iconColor: visual.iconColor,
+    }
+  }), [inventoryProducts])
+  const catalogCategories = useMemo(() => [
+    { id: 'todos', label: 'Todos', icon: LayoutGrid },
+    ...inventoryCategories.filter((item) => item.active).map((item) => ({
+      id: item.slug,
+      label: item.name,
+      icon: staticCategories.find((category) => category.id === item.slug)?.icon ?? Package,
+    })),
+  ], [inventoryCategories])
+  const catalogSubcategories = useMemo(() => Object.fromEntries(catalogCategories.map((item) => [
+    item.id,
+    item.id === 'todos'
+      ? ['Todos']
+      : ['Todos', ...new Set(catalogProducts
+        .filter((product) => product.category === item.id)
+        .map((product) => product.subcategory))],
+  ])), [catalogCategories, catalogProducts])
+
+  const students = useMemo<Student[]>(() => studentAccounts.filter((student) => student.status === 'active').map((student) => {
+    const split = splitBalance(student.netBalance)
+    return { accountId: student.id, id: student.code, name: `${student.firstName} ${student.lastName}`, course: `${student.grade} ${student.group}`, balance: split.balance, debt: split.debt }
+  }), [studentAccounts])
+  const selectedStudent = students.find((student) => student.accountId === selectedStudentId) ?? null
 
   const total = useMemo(
     () => cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0),
@@ -49,15 +122,17 @@ export function PosPage() {
   )
 
   function commitCart(nextCart: CartLine[]) {
+    lastCommittedSale.current = null
     setUndoStack((history) => [...history.slice(-9), cart])
     setCart(nextCart)
   }
 
   function addProduct(product: Product) {
     const existing = cart.find((line) => line.product.id === product.id)
+    if ((existing?.quantity ?? 0) >= (product.stockQuantity ?? Number.MAX_SAFE_INTEGER)) return
     const nextCart = existing
       ? cart.map((line) =>
-          line.product.id === product.id ? { ...line, quantity: Math.min(99, line.quantity + 1) } : line,
+          line.product.id === product.id ? { ...line, quantity: Math.min(99, product.stockQuantity ?? 99, line.quantity + 1) } : line,
         )
       : [...cart, { product, quantity: 1 }]
     commitCart(nextCart)
@@ -66,7 +141,7 @@ export function PosPage() {
   function changeQuantity(productId: string, delta: number) {
     const nextCart = cart
       .map((line) =>
-        line.product.id === productId ? { ...line, quantity: Math.min(99, line.quantity + delta) } : line,
+        line.product.id === productId ? { ...line, quantity: Math.min(99, line.product.stockQuantity ?? 99, line.quantity + delta) } : line,
       )
       .filter((line) => line.quantity > 0)
     commitCart(nextCart)
@@ -89,12 +164,94 @@ export function PosPage() {
 
   function changeCategory(nextCategory: string) {
     setCategory(nextCategory)
-    setSubcategory(subcategories[nextCategory]?.[0] ?? 'Todos')
+    setSubcategory(catalogSubcategories[nextCategory]?.[0] ?? 'Todos')
   }
 
   function selectStudent(student: Student) {
-    setSelectedStudent(student)
+    setSelectedStudentId(student.accountId)
     setStudentQuery('')
+  }
+
+  async function confirmStudentConsumption() {
+    if (!selectedStudent || total <= 0 || purchaseInFlight.current) return
+    if (!can('pos:charge') || !session) {
+      setDialog({ kind: 'notice', title: 'Operación no autorizada', message: 'Tu sesión no permite registrar consumos.' })
+      return
+    }
+    const saleSignature = studentSaleSignature(selectedStudent.accountId, cart.map(({ product, quantity }) => ({ productId: product.id, quantity })))
+    if (lastCommittedSale.current === saleSignature) return
+    purchaseInFlight.current = true
+    pendingStudentSale.current = prepareCashPaymentAttempt(
+      pendingStudentSale.current,
+      saleSignature,
+      () => createIdempotencyKey('pos-sale'),
+    )
+    try {
+      const result = await registerStudentSale({
+        studentId: selectedStudent.accountId,
+        totalAmount: total,
+        idempotencyKey: pendingStudentSale.current.idempotencyKey,
+        items: cart.map(({ product, quantity }) => ({ productId: product.id, productName: product.name, unitPrice: product.price, quantity })),
+      })
+      lastCommittedSale.current = saleSignature
+      pendingStudentSale.current = null
+      setDialog(result.queued
+        ? { kind: 'notice', title: 'Consumo guardado', message: `${formatCurrency(total)} quedó pendiente y se sincronizará automáticamente sin perderse.` }
+        : { kind: 'notice', title: 'Consumo registrado', message: `${formatCurrency(total)} descontados de la cuenta de ${selectedStudent.name}.` })
+      setCart([])
+      setUndoStack([])
+    } catch (cause) {
+      setDialog({ kind: 'notice', title: 'No se registró el consumo', message: cause instanceof Error ? cause.message : 'Intenta nuevamente.' })
+    } finally {
+      purchaseInFlight.current = false
+    }
+  }
+
+  async function confirmCashSale() {
+    if (total <= 0 || purchaseInFlight.current) return
+    if (!can('pos:charge') || !session) {
+      setDialog({ kind: 'notice', title: 'Operación no autorizada', message: 'Tu sesión no permite registrar ventas.' })
+      return
+    }
+    const saleSignature = cashSaleSignature(cart.map(({ product, quantity }) => ({ productId: product.id, quantity })))
+    if (lastCommittedSale.current === saleSignature) return
+    purchaseInFlight.current = true
+    setPaymentBusy(true)
+    pendingCashSale.current = prepareCashPaymentAttempt(
+      pendingCashSale.current,
+      saleSignature,
+      () => createIdempotencyKey('cash-sale'),
+    )
+    try {
+      const result = await registerCashSale({
+        totalAmount: total,
+        idempotencyKey: pendingCashSale.current.idempotencyKey,
+        items: cart.map(({ product, quantity }) => ({ productId: product.id, productName: product.name, unitPrice: product.price, quantity })),
+      })
+      lastCommittedSale.current = saleSignature
+      pendingCashSale.current = null
+      setDialog(result.queued
+        ? { kind: 'notice', title: 'Venta guardada', message: `${formatCurrency(total)} en efectivo quedó pendiente y se sincronizará automáticamente.` }
+        : { kind: 'notice', title: 'Venta registrada', message: `${formatCurrency(total)} pagados en efectivo.` })
+      setCart([])
+      setUndoStack([])
+    } catch (cause) {
+      setDialog({ kind: 'notice', title: 'No se registró la venta', message: cause instanceof Error ? cause.message : 'Intenta nuevamente.' })
+    } finally {
+      purchaseInFlight.current = false
+      setPaymentBusy(false)
+    }
+  }
+
+  async function showStudentHistory() {
+    if (!selectedStudent) return
+    try {
+      const movements = await listStudentMovements(selectedStudent.accountId)
+      const message = movements.length === 0 ? 'Este estudiante todavía no tiene movimientos.' : movements.slice(0, 5).map((movement) => `${new Date(movement.occurredAt).toLocaleString('es-CO')} · ${movement.detail} · ${formatCurrency(movement.amount)}`).join('\n')
+      setDialog({ kind: 'history', title: `Historial de ${selectedStudent.name}`, message })
+    } catch (cause) {
+      setDialog({ kind: 'notice', title: 'No fue posible consultar el historial', message: cause instanceof Error ? cause.message : 'Intenta nuevamente.' })
+    }
   }
 
   function showDemoNotice(title: string, message: string) {
@@ -105,18 +262,9 @@ export function PosPage() {
     <div className="pos-shell flex min-h-dvh flex-col bg-[#eef5fa] text-slate-900">
       <TopBar />
 
-      <main className="pos-layout mx-auto grid w-full max-w-[1600px] flex-1 gap-3 p-3 sm:p-4">
-        <div className="pos-catalog-column flex min-w-0 flex-col gap-3">
+      <main className="pos-layout mx-auto grid min-h-0 w-full max-w-[1600px] flex-1 gap-2 p-2 sm:p-3 lg:p-2">
+        <div className="pos-catalog-column flex min-w-0 flex-col gap-2">
           <ModeTabs mode={mode} onChange={setMode} />
-
-          <div className="flex items-start gap-2 px-1 text-sm font-semibold text-slate-600">
-            <Info aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-blue-600" />
-            <p>
-              {mode === 'free'
-                ? 'Venta libre: para clientes que pagan en efectivo y no están en la base de estudiantes.'
-                : 'Modo estudiante: selecciona una cuenta para consultar saldos y preparar consumos de demostración.'}
-            </p>
-          </div>
 
           <CustomerPanel
             mode={mode}
@@ -125,47 +273,38 @@ export function PosPage() {
             onSelectStudent={selectStudent}
             query={studentQuery}
             selectedStudent={selectedStudent}
+            students={students}
           />
 
           <ProductCatalog
             category={category}
+            categories={catalogCategories}
             onAddProduct={addProduct}
             onCategoryChange={changeCategory}
             onSubcategoryChange={setSubcategory}
             subcategory={subcategory}
+            subcategories={catalogSubcategories}
+            products={catalogProducts}
           />
         </div>
 
         <CartPanel
           canUndo={undoStack.length > 0}
           cart={cart}
-          cashReceived={cashReceived}
+          paymentBusy={paymentBusy}
           mode={mode}
-          onCashReceivedChange={setCashReceived}
           onChangeQuantity={changeQuantity}
           onClear={clearCart}
-          onPrimaryAction={() =>
-            showDemoNotice(
-              mode === 'free' ? 'Pago en efectivo preparado' : 'Consumo preparado',
-              mode === 'free'
-                ? `Total ${total.toLocaleString('es-CO')} listo para revisión. Esta demostración no registra pagos.`
-                : 'El consumo puede revisarse en pantalla. No se aplicó al saldo del estudiante.',
-            )
-          }
+          onPrimaryAction={() => mode === 'student'
+            ? void confirmStudentConsumption()
+            : void confirmCashSale()}
           onRegisterPayment={() =>
-            showDemoNotice('Registrar abono', 'El formulario de abonos se habilitará cuando se implemente la persistencia segura.')
+            showDemoNotice('Recargas y abonos', 'Registra el movimiento desde Administración → Estudiantes. El saldo se actualizará aquí automáticamente.')
           }
           onRemove={removeProduct}
-          onShowHistory={() =>
-            setDialog({
-              kind: 'history',
-              title: mode === 'student' ? 'Historial del estudiante' : 'Historial de demostración',
-              message:
-                mode === 'student' && selectedStudent
-                  ? `Movimientos ficticios para ${selectedStudent.name}. No corresponden a transacciones reales.`
-                  : 'Movimientos ficticios usados exclusivamente para validar la interfaz.',
-            })
-          }
+          onShowHistory={() => mode === 'student'
+            ? void showStudentHistory()
+            : showDemoNotice('Historial de demostración', 'La venta libre aún no registra transacciones.')}
           onUndo={undoLastTouch}
           student={selectedStudent}
         />
