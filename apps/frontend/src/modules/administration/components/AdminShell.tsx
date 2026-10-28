@@ -7,6 +7,7 @@ import {
   CloudOff,
   FileChartColumn,
   LayoutDashboard,
+  LogOut,
   Menu,
   MonitorCog,
   PanelLeftClose,
@@ -21,6 +22,7 @@ import {
 } from 'lucide-react'
 
 import type { AdministrationSection } from '../types'
+import { useAuth } from '../../auth'
 
 interface NavigationItem {
   id: AdministrationSection
@@ -32,6 +34,7 @@ const navigation: NavigationItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'students', label: 'Estudiantes', icon: UsersRound },
   { id: 'balances', label: 'Saldos y deudas', icon: CircleDollarSign },
+  { id: 'inventory', label: 'Inventarios', icon: Boxes },
   { id: 'users', label: 'Usuarios y cajeros', icon: ShieldCheck },
   { id: 'registers', label: 'Cajas', icon: Store },
   { id: 'sales', label: 'Ventas', icon: ShoppingBag },
@@ -48,6 +51,7 @@ interface AdminShellProps {
 export function AdminShell({ activeSection, onSectionChange, children }: AdminShellProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [now, setNow] = useState(() => new Date())
+  const { session, logout } = useAuth()
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000)
@@ -101,8 +105,8 @@ export function AdminShell({ activeSection, onSectionChange, children }: AdminSh
         <header className="flex min-h-20 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3 shadow-sm sm:px-5">
           <div className="lg:hidden"><button aria-label="Abrir menú" className="admin-icon-button" onClick={() => setMenuOpen(true)} type="button"><Menu aria-hidden="true" className="size-6" /></button></div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-black text-slate-950">Laura Méndez</p>
-            <p className="truncate text-xs font-semibold text-slate-500">Administrador activo · Sesión de demostración</p>
+            <p className="truncate text-sm font-black text-slate-950">{session?.user.displayName}</p>
+            <p className="truncate text-xs font-semibold text-slate-500">Administrador · Sesión verificada por servidor</p>
           </div>
           <div className="hidden items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-bold text-slate-600 sm:flex">
             <BookOpenCheck aria-hidden="true" className="size-4 text-blue-600" />
@@ -112,6 +116,7 @@ export function AdminShell({ activeSection, onSectionChange, children }: AdminSh
             <CloudOff aria-hidden="true" className="size-5" />
             <span className="hidden sm:inline">Sin conexión</span>
           </div>
+          <button aria-label="Cerrar sesión" className="admin-icon-button" onClick={() => void logout()} title="Cerrar sesión" type="button"><LogOut aria-hidden="true" className="size-5" /></button>
         </header>
 
         <main className="admin-content min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6">{children}</main>

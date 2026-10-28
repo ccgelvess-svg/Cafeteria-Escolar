@@ -1,25 +1,31 @@
-import { useState } from 'react'
-import { Banknote, History, LockKeyhole, Plus, Store, UserRound } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Banknote, RefreshCw, ShoppingBag, Store, Undo2 } from 'lucide-react'
 
-import { demoRegisters } from '../data'
+import { listCashRegisterSummaries, SALES_CHANGED_EVENT, type CashRegisterSummary } from '../../sales'
 import { formatAdminCurrency } from '../format'
-import type { CashRegister } from '../types'
-import { AdminDialog, DemoBanner, PageHeader, StatusPill } from '../components/AdminUi'
-
-type RegisterAction = 'create' | 'open' | 'close' | 'history' | null
+import { EmptyState, PageHeader, StatusPill } from '../components/AdminUi'
 
 export function CashRegistersSection() {
-  const [action, setAction] = useState<RegisterAction>(null)
-  const [selected, setSelected] = useState<CashRegister | null>(null)
-  const openAction = (next: RegisterAction, register?: CashRegister) => { setSelected(register ?? null); setAction(next) }
-  const close = () => { setAction(null); setSelected(null) }
+  const [registers, setRegisters] = useState<CashRegisterSummary[]>([])
+  const [error, setError] = useState('')
+  const refresh = useCallback(async () => {
+    try { setRegisters(await listCashRegisterSummaries()); setError('') }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'No fue posible cargar las cajas.') }
+  }, [])
+
+  useEffect(() => {
+    void refresh()
+    window.addEventListener(SALES_CHANGED_EVENT, refresh)
+    return () => window.removeEventListener(SALES_CHANGED_EVENT, refresh)
+  }, [refresh])
 
   return <div className="admin-page-stack">
-    <PageHeader eyebrow="Operación de turnos" title="Cajas" description="Supervisa asignaciones, aperturas y cierres de caja de demostración." action={<button className="admin-primary-button" onClick={() => openAction('create')} type="button"><Plus className="size-5" />Registrar caja</button>} />
-    <DemoBanner />
-    <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">{demoRegisters.map((register) => <article className="admin-card" key={register.id}><div className="flex items-start gap-3"><div className={`grid size-12 place-items-center rounded-xl ${register.status === 'Abierta' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}><Store /></div><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><h2 className="admin-card-title">{register.name}</h2><StatusPill active={register.status === 'Abierta'} activeText="Abierta" inactiveText="Cerrada" /></div><p className="mt-1 flex items-center gap-1 text-sm font-semibold text-slate-500"><UserRound className="size-4" />{register.cashier}</p></div></div><dl className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-sm"><div><dt className="font-bold text-slate-400">Efectivo inicial</dt><dd className="mt-1 font-black">{formatAdminCurrency(register.openingCash)}</dd></div><div><dt className="font-bold text-slate-400">Efectivo esperado</dt><dd className="mt-1 font-black">{formatAdminCurrency(register.expectedCash)}</dd></div><div><dt className="font-bold text-slate-400">Último cierre</dt><dd className="mt-1 font-bold">{register.lastClose}</dd></div><div><dt className="font-bold text-slate-400">Diferencia</dt><dd className={`mt-1 font-black ${register.difference < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{formatAdminCurrency(register.difference)}</dd></div></dl><div className="mt-4 grid grid-cols-2 gap-2"><button className="admin-secondary-button" onClick={() => openAction('history', register)} type="button"><History className="size-4" />Historial</button><button className={register.status === 'Abierta' ? 'admin-danger-button' : 'admin-primary-button'} onClick={() => openAction(register.status === 'Abierta' ? 'close' : 'open', register)} type="button">{register.status === 'Abierta' ? <LockKeyhole className="size-4" /> : <Banknote className="size-4" />}{register.status === 'Abierta' ? 'Preparar cierre' : 'Preparar apertura'}</button></div></article>)}</section>
-    <AdminDialog open={action === 'create'} title="Registrar caja" description="Registro temporal sin persistencia." onClose={close} footer={<><button className="admin-secondary-button" onClick={close} type="button">Cancelar</button><button className="admin-primary-button" onClick={close} type="button">Guardar borrador</button></>}><div className="grid gap-4"><label className="admin-field">Nombre de la caja<input className="admin-input" placeholder="Ej. Caja 04" /></label><label className="admin-field">Cajero asignado<select className="admin-select"><option>Sin asignar</option><option>Carlos Ruiz</option><option>Miguel Rojas</option></select></label></div></AdminDialog>
-    <AdminDialog open={action === 'open' || action === 'close'} title={action === 'open' ? `Preparar apertura · ${selected?.name ?? ''}` : `Preparar cierre · ${selected?.name ?? ''}`} description="Esta operación no cambia un turno real." onClose={close} footer={<><button className="admin-secondary-button" onClick={close} type="button">Cancelar</button><button className="admin-primary-button" onClick={close} type="button">Guardar preparación</button></>}><div className="grid gap-4 sm:grid-cols-2"><label className="admin-field">Cajero<select className="admin-select"><option>{selected?.cashier}</option><option>Carlos Ruiz</option></select></label><label className="admin-field">{action === 'open' ? 'Efectivo inicial' : 'Efectivo contado'}<input className="admin-input" inputMode="numeric" placeholder="$ 0" /></label><label className="admin-field sm:col-span-2">Observaciones<textarea className="admin-input min-h-24" /></label></div></AdminDialog>
-    <AdminDialog open={action === 'history'} title={`Historial de cierres · ${selected?.name ?? ''}`} description="Registros ficticios para validación visual." onClose={close} footer={<button className="admin-primary-button" onClick={close} type="button">Cerrar</button>}><div className="space-y-3">{['10 oct · Diferencia -$1.200', '9 oct · Sin diferencias', '8 oct · Diferencia +$500'].map((item) => <div className="rounded-xl border border-slate-200 p-3 font-bold" key={item}>{item}</div>)}</div></AdminDialog>
+    <PageHeader eyebrow="Operación de caja" title="Cajas" description="Recaudo efectivo calculado desde ventas confirmadas; las anulaciones no suman al total." action={<button className="admin-secondary-button" onClick={() => void refresh()} type="button"><RefreshCw className="size-4" />Actualizar</button>} />
+    {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700">{error}</div>}
+    <section className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">{registers.map((register) => <article className="admin-card" key={register.id}>
+      <div className="flex items-start gap-3"><div className={`grid size-12 place-items-center rounded-xl ${register.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}><Store /></div><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><h2 className="admin-card-title">{register.name}</h2><StatusPill active={register.active} activeText="Activa" inactiveText="Inactiva" /></div><p className="admin-card-subtitle">Actualización automática desde el POS</p></div></div>
+      <dl className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-sm"><div className="col-span-2"><dt className="flex items-center gap-1 font-bold text-slate-500"><Banknote className="size-4" />Recaudo efectivo</dt><dd className="mt-1 text-2xl font-black text-emerald-700">{formatAdminCurrency(register.cashTotal)}</dd></div><div><dt className="flex items-center gap-1 font-bold text-slate-400"><ShoppingBag className="size-4" />Ventas vigentes</dt><dd className="mt-1 text-xl font-black">{register.completedSales}</dd></div><div><dt className="flex items-center gap-1 font-bold text-slate-400"><Undo2 className="size-4" />Anuladas</dt><dd className="mt-1 text-xl font-black text-rose-600">{register.voidedSales}</dd></div></dl>
+    </article>)}</section>
+    {!error && registers.length === 0 && <EmptyState>No hay cajas autorizadas.</EmptyState>}
   </div>
 }

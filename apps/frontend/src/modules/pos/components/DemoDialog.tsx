@@ -1,8 +1,5 @@
 import { CircleCheck, History, Info, X } from 'lucide-react'
 
-import { demoHistory } from '../data'
-import { formatCurrency } from '../format'
-
 export type DialogKind = 'history' | 'notice' | null
 
 interface DemoDialogProps {
@@ -32,24 +29,13 @@ export function DemoDialog({ kind, title, message, onClose }: DemoDialogProps) {
         </header>
 
         <div className="p-5">
-          <p className="text-sm font-semibold text-slate-600">{message}</p>
+          <p className="whitespace-pre-line text-sm font-semibold text-slate-600">{message}</p>
           {kind === 'history' ? (
-            <div className="mt-4 divide-y divide-slate-100 rounded-xl border border-slate-200">
-              {demoHistory.map((entry) => (
-                <div className="grid grid-cols-[1fr_auto] gap-3 p-3" key={`${entry.date}-${entry.detail}`}>
-                  <div>
-                    <span className={`text-xs font-black uppercase ${entry.kind === 'Abono' ? 'text-emerald-700' : 'text-blue-700'}`}>{entry.kind}</span>
-                    <p className="font-bold text-slate-900">{entry.detail}</p>
-                    <p className="text-xs text-slate-500">{entry.date}</p>
-                  </div>
-                  <strong className="self-center text-slate-950">{formatCurrency(entry.amount)}</strong>
-                </div>
-              ))}
-            </div>
+            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm font-bold text-blue-900">Movimientos almacenados en este dispositivo.</div>
           ) : (
             <div className="mt-5 flex items-start gap-3 rounded-xl bg-emerald-50 p-4 text-emerald-900">
               <CircleCheck aria-hidden="true" className="mt-0.5 size-6 shrink-0" />
-              <p className="font-bold">El control está listo visualmente, pero no guardó ni sincronizó ningún movimiento.</p>
+              <p className="font-bold">La operación fue procesada en este dispositivo.</p>
             </div>
           )}
         </div>

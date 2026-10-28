@@ -39,3 +39,13 @@ apps/frontend/android/captures/
 *.db-wal
 *.sqlite
 *.sqlite3
+
+# Backups and database exports
+*.dump
+*.backup
+backups/
+respaldos/
+supabase/.temp/
+
+.vercel
+.env*

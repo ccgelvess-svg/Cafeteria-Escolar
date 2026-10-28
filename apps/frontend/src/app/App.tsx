@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 
 import { AdministrationPage } from '../modules/administration'
+import { AuthGate, type ProtectedRoute } from '../modules/auth'
+import { InventoryAccessPage } from '../modules/inventory'
 import { PosPage } from '../modules/pos'
 
-function getRoute() {
-  return window.location.hash.startsWith('#/admin') ? 'admin' : 'pos'
+function getRoute(): ProtectedRoute {
+  if (window.location.hash.startsWith('#/admin')) return 'admin'
+  if (window.location.hash.startsWith('#/inventory')) return 'inventory'
+  return 'pos'
 }
 
 export function App() {
@@ -16,5 +20,11 @@ export function App() {
     return () => window.removeEventListener('hashchange', handleRouteChange)
   }, [])
 
-  return route === 'admin' ? <AdministrationPage /> : <PosPage />
+  const pages: Record<ProtectedRoute, React.ReactNode> = {
+    admin: <AdministrationPage />,
+    inventory: <InventoryAccessPage />,
+    pos: <PosPage />,
+  }
+
+  return <AuthGate route={route}>{pages[route]}</AuthGate>
 }

@@ -14,7 +14,7 @@ import {
   Zap,
 } from 'lucide-react'
 
-import type { Product, Student } from './types'
+import type { Product } from './types'
 
 export const categories = [
   { id: 'bebidas', label: 'Bebidas', icon: GlassWater },
@@ -55,13 +55,6 @@ export const products: Product[] = [
   { id: 'pan-queso', name: 'Pan de queso', shortName: 'Pan queso', price: 1800, category: 'panaderia', subcategory: 'Salado', tint: 'bg-orange-50', icon: Croissant, iconColor: 'text-orange-600' },
   { id: 'hamburguesa', name: 'Hamburguesa', shortName: 'Hamburguesa', price: 6500, category: 'rapidos', subcategory: 'Hamburguesas', tint: 'bg-yellow-50', icon: Sandwich, iconColor: 'text-amber-700' },
   { id: 'pizza', name: 'Porción de pizza', shortName: 'Pizza', price: 4500, category: 'rapidos', subcategory: 'Pizza', tint: 'bg-red-50', icon: Pizza, iconColor: 'text-red-600' },
-]
-
-export const students: Student[] = [
-  { id: 'EST-1042', name: 'Valentina Rodríguez', course: '5° A', balance: 18500, debt: 0 },
-  { id: 'EST-0871', name: 'Samuel Martínez', course: '4° B', balance: 4200, debt: 3500 },
-  { id: 'EST-1156', name: 'Mariana Gómez', course: '6° A', balance: 12000, debt: 0 },
-  { id: 'EST-0934', name: 'Daniel Herrera', course: '5° C', balance: 0, debt: 6800 },
 ]
 
 export const demoHistory = [

@@ -11,10 +11,14 @@
     "dev": "npm run dev --workspace @cafeteria-escolar/frontend",
     "build": "npm run build --workspace @cafeteria-escolar/frontend",
     "typecheck": "npm run typecheck --workspace @cafeteria-escolar/frontend",
+    "test": "node --test apps/frontend/src/modules/students/financialRules.test.ts apps/frontend/src/modules/students/studentRules.test.ts apps/frontend/src/modules/auth/authorization.test.ts apps/frontend/src/modules/auth/authErrors.test.ts apps/frontend/src/modules/pos/cashPayment.test.ts apps/frontend/src/infrastructure/sync/outboxState.test.ts",
     "android": "npm run android:sync --workspace @cafeteria-escolar/frontend"
   },
   "engines": {
     "node": ">=22.0.0",
     "npm": ">=10.0.0"
+  },
+  "devDependencies": {
+    "vercel": "^63.1.2"
   }
 }

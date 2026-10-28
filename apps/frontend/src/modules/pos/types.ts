@@ -12,6 +12,7 @@ export interface Product {
   tint: string
   icon: LucideIcon
   iconColor: string
+  stockQuantity?: number
 }
 
 export interface CartLine {
@@ -20,6 +21,7 @@ export interface CartLine {
 }
 
 export interface Student {
+  accountId: string
   id: string
   name: string
   course: string

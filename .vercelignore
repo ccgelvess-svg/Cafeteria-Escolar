@@ -1,0 +1,14 @@
+.browser-test/
+.npm-cache/
+.vercel/
+.env*
+node_modules/
+apps/frontend/node_modules/
+apps/frontend/dist/
+apps/frontend/android/
+referencias/
+*.dump
+*.backup
+backups/
+respaldos/
+supabase/.temp/
