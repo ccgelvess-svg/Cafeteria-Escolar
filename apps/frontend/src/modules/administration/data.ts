@@ -1,16 +1,8 @@
 import type { AccountMovement, AdminUser, CashRegister, SaleRecord, StudentRecord } from './types'
 
-export const demoStudents: StudentRecord[] = [
-  { id: 'demo-1', code: 'DEMO-001', firstName: 'Estudiante', lastName: 'Uno', grade: '5°', group: 'A', balance: 20000, debt: 0, status: 'active' },
-  { id: 'demo-2', code: 'DEMO-002', firstName: 'Estudiante', lastName: 'Dos', grade: '4°', group: 'B', balance: 5000, debt: 3000, status: 'active' },
-  { id: 'demo-3', code: 'DEMO-003', firstName: 'Estudiante', lastName: 'Tres', grade: '6°', group: 'A', balance: 10000, debt: 0, status: 'active' },
-]
+export const demoStudents: StudentRecord[] = []
 
-export const demoMovements: AccountMovement[] = [
-  { id: 'MOV-DEMO-001', studentId: 'demo-1', date: '2026-10-11', type: 'Consumo', detail: 'Consumo ficticio de demostración', amount: -4500 },
-  { id: 'MOV-DEMO-002', studentId: 'demo-1', date: '2026-10-10', type: 'Recarga', detail: 'Recarga ficticia de demostración', amount: 20000 },
-  { id: 'MOV-DEMO-003', studentId: 'demo-2', date: '2026-10-11', type: 'Abono', detail: 'Abono ficticio de demostración', amount: 3000 },
-]
+export const demoMovements: AccountMovement[] = []
 
 export const demoUsers: AdminUser[] = [
   { id: 'USR-DEMO-01', name: 'Administrador Demo', username: 'admin.demo', role: 'Administrador', register: 'Todas', permissions: ['Administración', 'Reportes', 'Cajas'], status: 'active', lastAccess: 'Sesión de demostración' },

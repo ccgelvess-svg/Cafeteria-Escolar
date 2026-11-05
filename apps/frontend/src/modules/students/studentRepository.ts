@@ -101,6 +101,21 @@ export async function listStudentMovements(studentId: string) {
   return (data as MovementRow[]).map(mapMovement)
 }
 
+export async function listAllStudentMovements() {
+  const pageSize = 1000
+  const movements: StudentMovement[] = []
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await requireSupabase().from('student_movements')
+      .select('id,student_id,occurred_at,type,amount,detail,actor_display_name,device_id,idempotency_key,reverses_movement_id')
+      .order('occurred_at', { ascending: false }).order('id')
+      .range(offset, offset + pageSize - 1)
+    if (error) throw new Error('No fue posible consultar los movimientos autorizados.')
+    const page = (data as MovementRow[]).map(mapMovement)
+    movements.push(...page)
+    if (page.length < pageSize) return movements
+  }
+}
+
 export async function reverseMovement(studentId: string, movementId: string, _responsible: string) {
   const { data, error } = await requireSupabase().rpc('reverse_student_movement', {
     p_student_id: studentId,

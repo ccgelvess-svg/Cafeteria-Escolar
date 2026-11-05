@@ -12,3 +12,8 @@ referencias/
 backups/
 respaldos/
 supabase/.temp/
+scripts/delete_students_after_approval.sql
+scripts/student_cleanup_supabase_dry_run.sql
+scripts/student_cleanup_supabase_commit.sql
+scripts/student_cleanup_remote_precheck.sql
+docs/student-test-data-cleanup-impact-20261105.md
