@@ -28,13 +28,3 @@ export const demoSales: SaleRecord[] = [
   { id: 'VENTA-DEMO-002', date: '2026-10-11', time: '9:38 a. m.', cashier: 'Cajero Demo', register: 'Caja Demo 01', type: 'Venta libre', customer: 'Venta libre', total: 7700, status: 'Completada', items: [{ name: 'Agua pequeña', quantity: 1, subtotal: 1200 }, { name: 'Pastel carne', quantity: 1, subtotal: 2500 }, { name: 'Papas medianas', quantity: 2, subtotal: 4000 }] },
   { id: 'VENTA-DEMO-003', date: '2026-10-11', time: '9:31 a. m.', cashier: 'Cajero Demo', register: 'Caja Demo 01', type: 'Estudiante', customer: 'Estudiante Dos', total: 3500, status: 'Completada', items: [{ name: 'Gatorade', quantity: 1, subtotal: 3500 }] },
 ]
-
-export const salesByHour = [
-  { label: '7 a. m.', value: 38 }, { label: '8 a. m.', value: 72 }, { label: '9 a. m.', value: 94 },
-  { label: '10 a. m.', value: 66 }, { label: '11 a. m.', value: 82 }, { label: '12 m.', value: 58 },
-]
-
-export const weeklySales = [
-  { label: 'Lun', value: 68 }, { label: 'Mar', value: 78 }, { label: 'Mié', value: 62 },
-  { label: 'Jue', value: 91 }, { label: 'Vie', value: 74 },
-]
