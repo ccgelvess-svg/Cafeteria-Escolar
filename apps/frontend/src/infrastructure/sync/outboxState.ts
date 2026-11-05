@@ -12,6 +12,7 @@ export type PendingSaleOperation = {
   kind: 'cash-sale' | 'student-sale'
   saleId: string
   idempotencyKey: string
+  cashRegisterId?: string
   totalAmount: number
   items: PendingSaleItem[]
   studentId?: string

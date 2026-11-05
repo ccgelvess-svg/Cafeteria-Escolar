@@ -22,6 +22,10 @@ export function canAccessRoute(role: AppRole, route: ProtectedRoute) {
   return hasPermission(role, routePermission[route])
 }
 
+export function canUseCashRegister(role: AppRole, assignedRegisterId: string | undefined, registerId: string) {
+  return role === 'administrator' || (role === 'cashier' && assignedRegisterId === registerId)
+}
+
 export function defaultRouteFor(role: AppRole): ProtectedRoute {
   if (role === 'inventory') return 'inventory'
   return role === 'administrator' ? 'admin' : 'pos'

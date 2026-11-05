@@ -50,6 +50,7 @@ async function send(operation: PendingSaleOperation) {
         p_total_amount: operation.totalAmount,
         p_items: operation.items,
         p_idempotency_key: operation.idempotencyKey,
+        ...(operation.cashRegisterId ? { p_cash_register_id: operation.cashRegisterId } : {}),
       }
     : {
         p_sale_id: operation.saleId,
@@ -58,6 +59,7 @@ async function send(operation: PendingSaleOperation) {
         p_items: operation.items,
         p_device_id: operation.deviceId,
         p_idempotency_key: operation.idempotencyKey,
+        ...(operation.cashRegisterId ? { p_cash_register_id: operation.cashRegisterId } : {}),
       }
   const { error } = await requireSupabase().rpc(rpc, params)
   if (error) throw new Error(error.message || 'No fue posible sincronizar la venta.')

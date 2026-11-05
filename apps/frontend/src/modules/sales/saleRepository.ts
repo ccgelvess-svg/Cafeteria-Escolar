@@ -19,6 +19,7 @@ export interface RegisteredSale {
   voidReason?: string
   studentName?: string
   registerName?: string
+  registerId?: string
   actorUserId: string
   items: Array<{ productName: string; unitPrice: number; quantity: number; lineTotal: number }>
 }
@@ -32,7 +33,13 @@ export interface CashRegisterSummary {
   cashTotal: number
 }
 
+export interface CashRegisterOption {
+  id: string
+  name: string
+}
+
 export const SALES_CHANGED_EVENT = 'cafeteria:sales-changed'
+const CASH_REGISTERS_CACHE_KEY = 'cafeteria:cash-registers:v1'
 
 export interface SaleRegistrationResult {
   data: unknown
@@ -40,6 +47,7 @@ export interface SaleRegistrationResult {
 }
 
 export async function registerStudentSale(input: {
+  cashRegisterId: string
   studentId: string
   totalAmount: number
   items: SaleItemDraft[]
@@ -48,7 +56,7 @@ export async function registerStudentSale(input: {
   const saleId = crypto.randomUUID()
   const operation = {
     id: crypto.randomUUID(), kind: 'student-sale' as const, saleId,
-    studentId: input.studentId, totalAmount: input.totalAmount, items: input.items,
+    studentId: input.studentId, cashRegisterId: input.cashRegisterId, totalAmount: input.totalAmount, items: input.items,
     deviceId: getDeviceId(), idempotencyKey: input.idempotencyKey,
     createdAt: new Date().toISOString(), attempts: 0,
   }
@@ -64,6 +72,7 @@ export async function registerStudentSale(input: {
     p_items: input.items,
     p_device_id: getDeviceId(),
     p_idempotency_key: input.idempotencyKey,
+    p_cash_register_id: input.cashRegisterId,
   })
   if (error) {
     const cause = new Error(error.message || 'No fue posible registrar la venta.')
@@ -79,6 +88,7 @@ export async function registerStudentSale(input: {
 }
 
 export async function registerCashSale(input: {
+  cashRegisterId: string
   totalAmount: number
   items: SaleItemDraft[]
   idempotencyKey: string
@@ -86,7 +96,7 @@ export async function registerCashSale(input: {
   const saleId = crypto.randomUUID()
   const operation = {
     id: crypto.randomUUID(), kind: 'cash-sale' as const, saleId,
-    totalAmount: input.totalAmount, items: input.items, idempotencyKey: input.idempotencyKey,
+    cashRegisterId: input.cashRegisterId, totalAmount: input.totalAmount, items: input.items, idempotencyKey: input.idempotencyKey,
     createdAt: new Date().toISOString(), attempts: 0,
   }
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -99,6 +109,7 @@ export async function registerCashSale(input: {
     p_total_amount: input.totalAmount,
     p_items: input.items,
     p_idempotency_key: input.idempotencyKey,
+    p_cash_register_id: input.cashRegisterId,
   })
   if (error) {
     const cause = new Error(error.message || 'No fue posible registrar la venta en efectivo.')
@@ -127,14 +138,14 @@ export async function voidSale(saleId: string, reason: string) {
 
 export async function listRegisteredSales() {
   const { data, error } = await requireSupabase().from('sales').select(`
-    id,occurred_at,total_amount,payment_method,status,void_reason,actor_user_id,
+    id,occurred_at,total_amount,payment_method,status,void_reason,actor_user_id,cash_register_id,
     sale_items(product_name,unit_price,quantity,line_total),
     students(first_name,last_name),cash_registers(name)
   `).order('occurred_at', { ascending: false }).limit(200)
   if (error) throw new Error('No fue posible consultar las ventas autorizadas.')
   return (data as unknown as Array<{
     id: string; occurred_at: string; total_amount: number; payment_method: RegisteredSale['paymentMethod'];
-    status: RegisteredSale['status']; void_reason: string | null; actor_user_id: string;
+    status: RegisteredSale['status']; void_reason: string | null; actor_user_id: string; cash_register_id: string | null;
     sale_items: Array<{ product_name: string; unit_price: number; quantity: number; line_total: number }>;
     students: { first_name: string; last_name: string } | Array<{ first_name: string; last_name: string }> | null;
     cash_registers: { name: string } | Array<{ name: string }> | null;
@@ -145,10 +156,30 @@ export async function listRegisteredSales() {
       id: row.id, occurredAt: row.occurred_at, totalAmount: row.total_amount,
       paymentMethod: row.payment_method, status: row.status, voidReason: row.void_reason ?? undefined,
       studentName: student ? `${student.first_name} ${student.last_name}` : undefined,
-      registerName: register?.name, actorUserId: row.actor_user_id,
+      registerId: row.cash_register_id ?? undefined, registerName: register?.name, actorUserId: row.actor_user_id,
       items: row.sale_items.map((item) => ({ productName: item.product_name, unitPrice: item.unit_price, quantity: item.quantity, lineTotal: item.line_total })),
     }
   })
+}
+
+export async function listActiveCashRegisters() {
+  const storage = typeof window === 'undefined' ? null : window.localStorage
+  const cached = (() => {
+    try {
+      const parsed: unknown = JSON.parse(storage?.getItem(CASH_REGISTERS_CACHE_KEY) ?? '[]')
+      return Array.isArray(parsed) ? parsed as CashRegisterOption[] : []
+    } catch { return [] }
+  })()
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return cached
+  const { data, error } = await requireSupabase().from('cash_registers')
+    .select('id,name').eq('active', true).order('name')
+  if (error) {
+    if (cached.length > 0) return cached
+    throw new Error('No fue posible consultar las cajas activas.')
+  }
+  const registers = data as CashRegisterOption[]
+  storage?.setItem(CASH_REGISTERS_CACHE_KEY, JSON.stringify(registers))
+  return registers
 }
 
 export async function listCashRegisterSummaries() {

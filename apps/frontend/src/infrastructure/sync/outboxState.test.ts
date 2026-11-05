@@ -21,7 +21,7 @@ class MemoryStorage {
 function sale(overrides: Partial<PendingSaleOperation> = {}): PendingSaleOperation {
   return {
     id: 'operation-1', kind: 'cash-sale', saleId: 'sale-1', idempotencyKey: 'cash:device:1',
-    totalAmount: 1600, items: [{ productId: 'agua-bolsa', productName: 'Agua bolsa', unitPrice: 800, quantity: 2 }],
+    cashRegisterId: 'register-1', totalAmount: 1600, items: [{ productId: 'agua-bolsa', productName: 'Agua bolsa', unitPrice: 800, quantity: 2 }],
     createdAt: '2026-10-13T12:00:00.000Z', attempts: 0, ...overrides,
   }
 }
@@ -32,6 +32,13 @@ test('la venta offline persiste entre recargas y conserva sus datos', () => {
   const reloaded = new MemoryStorage()
   reloaded.restore(storage.snapshot())
   assert.deepEqual(readPendingSales(reloaded), [sale()])
+})
+
+test('una venta pendiente anterior conserva compatibilidad aunque no tenga caja explícita', () => {
+  const storage = new MemoryStorage()
+  const legacySale = sale({ cashRegisterId: undefined })
+  assert.equal(enqueuePendingSale(storage, legacySale), true)
+  assert.equal(readPendingSales(storage)[0]?.cashRegisterId, undefined)
 })
 
 test('la clave idempotente evita encolar la misma venta dos veces', () => {
@@ -82,6 +89,7 @@ test('el consumo estudiantil offline conserva cuenta, dispositivo e idempotencia
   assert.deepEqual(result, { synced: 1, failed: 0, pending: 0 })
   assert.equal(sent.length, 1)
   assert.equal(sent[0]?.studentId, 'student-1')
+  assert.equal(sent[0]?.cashRegisterId, 'register-1')
   assert.equal(sent[0]?.deviceId, 'device-1')
   assert.equal(sent[0]?.idempotencyKey, 'student:device-1:1')
 })

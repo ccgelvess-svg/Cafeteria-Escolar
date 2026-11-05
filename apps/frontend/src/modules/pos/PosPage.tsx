@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Coffee,
   Cookie,
@@ -10,6 +10,7 @@ import {
   Package,
   Pizza,
   Sandwich,
+  Store,
   Wheat,
   Zap,
 } from 'lucide-react'
@@ -25,9 +26,9 @@ import { ModeTabs } from './components/ModeTabs'
 import { ProductCatalog } from './components/ProductCatalog'
 import { TopBar } from './components/TopBar'
 import { cashSaleSignature, prepareCashPaymentAttempt, studentSaleSignature, type CashPaymentAttempt } from './cashPayment'
-import { useAuth } from '../auth'
+import { canUseCashRegister, useAuth } from '../auth'
 import { createIdempotencyKey, listStudentMovements, splitBalance, useStudents } from '../students'
-import { registerCashSale, registerStudentSale } from '../sales'
+import { listActiveCashRegisters, registerCashSale, registerStudentSale, type CashRegisterOption } from '../sales'
 import { useInventory } from '../inventory'
 
 const initialCart: CartLine[] = []
@@ -70,6 +71,9 @@ export function PosPage() {
   const [studentQuery, setStudentQuery] = useState('')
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [dialog, setDialog] = useState<DialogState>(closedDialog)
+  const [registers, setRegisters] = useState<CashRegisterOption[]>([])
+  const [activeRegisterId, setActiveRegisterId] = useState('')
+  const [registerError, setRegisterError] = useState('')
   const purchaseInFlight = useRef(false)
   const lastCommittedSale = useRef<string | null>(null)
   const pendingCashSale = useRef<CashPaymentAttempt | null>(null)
@@ -77,6 +81,16 @@ export function PosPage() {
   const { students: studentAccounts } = useStudents()
   const { products: inventoryProducts, categories: inventoryCategories } = useInventory(false)
   const { session, can } = useAuth()
+  const activeRegister = registers.find((register) => register.id === activeRegisterId) ?? null
+
+  useEffect(() => {
+    void listActiveCashRegisters()
+      .then((items) => {
+        setRegisters(session ? items.filter((item) => canUseCashRegister(session.user.role, session.user.cashRegisterId, item.id)) : [])
+        setRegisterError('')
+      })
+      .catch((cause) => setRegisterError(cause instanceof Error ? cause.message : 'No fue posible cargar las cajas.'))
+  }, [session])
 
   const catalogProducts = useMemo<Product[]>(() => inventoryProducts.filter((item) => item.active).map((item) => {
     const visual = productVisual(item)
@@ -178,7 +192,11 @@ export function PosPage() {
       setDialog({ kind: 'notice', title: 'Operación no autorizada', message: 'Tu sesión no permite registrar consumos.' })
       return
     }
-    const saleSignature = studentSaleSignature(selectedStudent.accountId, cart.map(({ product, quantity }) => ({ productId: product.id, quantity })))
+    if (!activeRegister) {
+      setDialog({ kind: 'notice', title: 'Selecciona una caja', message: 'Debes elegir una caja activa antes de registrar ventas.' })
+      return
+    }
+    const saleSignature = studentSaleSignature(activeRegister.id, selectedStudent.accountId, cart.map(({ product, quantity }) => ({ productId: product.id, quantity })))
     if (lastCommittedSale.current === saleSignature) return
     purchaseInFlight.current = true
     pendingStudentSale.current = prepareCashPaymentAttempt(
@@ -188,6 +206,7 @@ export function PosPage() {
     )
     try {
       const result = await registerStudentSale({
+        cashRegisterId: activeRegister.id,
         studentId: selectedStudent.accountId,
         totalAmount: total,
         idempotencyKey: pendingStudentSale.current.idempotencyKey,
@@ -213,7 +232,11 @@ export function PosPage() {
       setDialog({ kind: 'notice', title: 'Operación no autorizada', message: 'Tu sesión no permite registrar ventas.' })
       return
     }
-    const saleSignature = cashSaleSignature(cart.map(({ product, quantity }) => ({ productId: product.id, quantity })))
+    if (!activeRegister) {
+      setDialog({ kind: 'notice', title: 'Selecciona una caja', message: 'Debes elegir una caja activa antes de registrar ventas.' })
+      return
+    }
+    const saleSignature = cashSaleSignature(activeRegister.id, cart.map(({ product, quantity }) => ({ productId: product.id, quantity })))
     if (lastCommittedSale.current === saleSignature) return
     purchaseInFlight.current = true
     setPaymentBusy(true)
@@ -224,6 +247,7 @@ export function PosPage() {
     )
     try {
       const result = await registerCashSale({
+        cashRegisterId: activeRegister.id,
         totalAmount: total,
         idempotencyKey: pendingCashSale.current.idempotencyKey,
         items: cart.map(({ product, quantity }) => ({ productId: product.id, productName: product.name, unitPrice: product.price, quantity })),
@@ -260,9 +284,17 @@ export function PosPage() {
 
   return (
     <div className="pos-shell flex min-h-dvh flex-col bg-[#eef5fa] text-slate-900">
-      <TopBar />
+      <TopBar activeRegisterId={activeRegisterId} registers={registers} onSelectRegister={setActiveRegisterId} />
 
-      <main className="pos-layout mx-auto grid min-h-0 w-full max-w-[1600px] flex-1 gap-2 p-2 sm:p-3 lg:p-2">
+      {!activeRegister ? <main className="mx-auto grid w-full max-w-2xl flex-1 place-items-center p-4">
+        <section className="w-full rounded-2xl border border-blue-200 bg-white p-6 text-center shadow-lg">
+          <Store aria-hidden="true" className="mx-auto size-12 text-blue-700" />
+          <h2 className="mt-3 text-2xl font-black text-slate-950">Selecciona la caja para iniciar</h2>
+          <p className="mt-2 font-semibold text-slate-500">Las ventas quedarán asociadas únicamente a la caja elegida.</p>
+          {registerError && <p className="mt-4 rounded-xl bg-rose-50 p-3 font-bold text-rose-700">{registerError}</p>}
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">{registers.map((register) => <button className="min-h-14 rounded-xl bg-blue-700 px-4 text-lg font-black text-white hover:bg-blue-800" key={register.id} onClick={() => setActiveRegisterId(register.id)} type="button">{register.name}</button>)}</div>
+        </section>
+      </main> : <main className="pos-layout mx-auto grid min-h-0 w-full max-w-[1600px] flex-1 gap-2 p-2 sm:p-3 lg:p-2">
         <div className="pos-catalog-column flex min-w-0 flex-col gap-2">
           <ModeTabs mode={mode} onChange={setMode} />
 
@@ -308,7 +340,7 @@ export function PosPage() {
           onUndo={undoLastTouch}
           student={selectedStudent}
         />
-      </main>
+      </main>}
 
       <FooterStatus />
 

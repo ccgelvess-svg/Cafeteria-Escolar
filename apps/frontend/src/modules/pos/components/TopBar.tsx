@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { CalendarDays, Cloud, CloudOff, LogOut, Settings, Store, Utensils } from 'lucide-react'
 
 import { useAuth } from '../../auth'
+import type { CashRegisterOption } from '../../sales'
 import { capitalize } from '../format'
 import { useSyncStatus } from '../../../infrastructure/sync/useSyncStatus'
 
@@ -26,13 +27,14 @@ function formatDate(date: Date) {
   )
 }
 
-export function TopBar() {
+export function TopBar({ activeRegisterId, registers, onSelectRegister }: {
+  activeRegisterId: string
+  registers: CashRegisterOption[]
+  onSelectRegister: (id: string) => void
+}) {
   const [now, setNow] = useState(() => new Date())
-  const { session, can, logout } = useAuth()
+  const { can, logout } = useAuth()
   const { online, pending } = useSyncStatus()
-  const registerId = session?.user.cashRegisterId
-  const registerName = session?.user.cashRegisterName
-    ?? (session?.user.role === 'administrator' && !registerId ? 'Todas las cajas' : registerId ? 'Caja asignada' : 'Sin caja')
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30_000)
@@ -62,16 +64,14 @@ export function TopBar() {
             <span className="hidden sm:inline">Admin</span>
           </a>}
 
-          <details className="register-details relative hidden lg:block">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl bg-white/15 px-3 text-sm font-bold transition hover:bg-white/25">
-              <Store aria-hidden="true" className="size-5" />
-              <span className="max-w-36 truncate">{registerName}</span>
-            </summary>
-            {registerId && <div className="absolute right-0 top-full z-40 mt-1 w-72 rounded-lg border border-blue-100 bg-white p-3 text-slate-700 shadow-xl">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">ID de caja</p>
-              <code className="mt-1 block break-all text-xs">{registerId}</code>
-            </div>}
-          </details>
+          <label className="flex min-h-11 items-center gap-2 rounded-xl bg-white/15 px-2 text-sm font-bold">
+            <Store aria-hidden="true" className="size-5 shrink-0" />
+            <span className="sr-only">Caja activa</span>
+            <select className="max-w-40 bg-transparent font-bold text-white outline-none" onChange={(event) => onSelectRegister(event.target.value)} value={activeRegisterId}>
+              <option className="text-slate-900" value="">Seleccionar caja</option>
+              {registers.map((register) => <option className="text-slate-900" key={register.id} value={register.id}>{register.name}</option>)}
+            </select>
+          </label>
 
           <button aria-label="Cerrar sesión" className="grid min-h-11 min-w-11 place-items-center rounded-xl text-blue-50 transition hover:bg-white/15" onClick={() => void logout()} title="Cerrar sesión" type="button"><LogOut aria-hidden="true" className="size-5" /></button>
 

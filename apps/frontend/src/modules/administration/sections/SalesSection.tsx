@@ -8,6 +8,7 @@ import { formatAdminCurrency } from '../format'
 export function SalesSection() {
   const [sales, setSales] = useState<RegisteredSale[]>([])
   const [query, setQuery] = useState('')
+  const [registerId, setRegisterId] = useState('all')
   const [selected, setSelected] = useState<RegisteredSale | null>(null)
   const [annul, setAnnul] = useState<RegisteredSale | null>(null)
   const [reason, setReason] = useState('')
@@ -24,9 +25,11 @@ export function SalesSection() {
     return () => window.removeEventListener(SALES_CHANGED_EVENT, refresh)
   }, [refresh])
 
+  const registers = useMemo(() => [...new Map(sales.filter((sale) => sale.registerId).map((sale) => [sale.registerId, sale.registerName ?? 'Sin nombre'])).entries()], [sales])
   const filtered = useMemo(() => sales.filter((sale) =>
-    `${sale.id} ${sale.studentName ?? 'venta libre'} ${sale.registerName ?? ''}`.toLowerCase().includes(query.toLowerCase()),
-  ), [sales, query])
+    (registerId === 'all' || sale.registerId === registerId)
+    && `${sale.id} ${sale.studentName ?? 'venta libre'} ${sale.registerName ?? ''}`.toLowerCase().includes(query.toLowerCase()),
+  ), [sales, query, registerId])
 
   async function confirmVoid() {
     if (!annul) return
@@ -38,7 +41,7 @@ export function SalesSection() {
 
   return <div className="admin-page-stack"><PageHeader eyebrow="Trazabilidad" title="Ventas" description="Consulta ventas reales y anula con reverso financiero y de inventario auditable." />
     {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700">{error}</div>}
-    <section className="admin-card"><SearchField onChange={setQuery} placeholder="Buscar venta, estudiante o caja" value={query} />
+    <section className="admin-card"><div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_16rem]"><SearchField onChange={setQuery} placeholder="Buscar venta, estudiante o caja" value={query} /><select className="admin-select" onChange={(event) => setRegisterId(event.target.value)} value={registerId}><option value="all">Todas las cajas</option>{registers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></div>
       <div className="admin-table-wrap mt-4"><table className="admin-table"><thead><tr><th>Venta</th><th>Fecha</th><th>Cliente</th><th>Tipo</th><th>Caja</th><th>Estado</th><th className="text-right">Total</th><th className="text-right">Acciones</th></tr></thead><tbody>{filtered.map((sale) => <tr key={sale.id}><td><strong className="font-mono">{sale.id.slice(0, 8)}</strong></td><td>{new Intl.DateTimeFormat('es-CO', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(sale.occurredAt))}</td><td>{sale.studentName ?? 'Venta libre'}</td><td>{sale.paymentMethod === 'cash' ? 'Efectivo' : 'Cuenta estudiante'}</td><td>{sale.registerName ?? 'Administración'}</td><td><StatusPill active={sale.status === 'completed'} activeText="Completada" inactiveText="Anulada" /></td><td className="text-right font-black">{formatAdminCurrency(sale.totalAmount)}</td><td><div className="flex justify-end gap-1"><button className="admin-icon-button" onClick={() => setSelected(sale)} aria-label={`Ver ${sale.id}`} type="button"><Eye className="size-4" /></button><button className="admin-icon-button text-rose-600" disabled={sale.status === 'voided'} onClick={() => { setAnnul(sale); setReason('') }} aria-label={`Anular ${sale.id}`} type="button"><RotateCcw className="size-4" /></button></div></td></tr>)}</tbody></table></div>{filtered.length === 0 && <EmptyState>No hay ventas registradas para este filtro.</EmptyState>}
     </section>
     <AdminDialog open={Boolean(selected)} title={`Detalle de venta ${selected?.id.slice(0, 8) ?? ''}`} description={selected ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(selected.occurredAt)) : ''} onClose={() => setSelected(null)} footer={<button className="admin-primary-button" onClick={() => setSelected(null)} type="button">Cerrar</button>}>{selected && <div><div className="divide-y divide-slate-100 rounded-xl border border-slate-200">{selected.items.map((item, index) => <div className="flex justify-between gap-3 p-3" key={`${item.productName}-${index}`}><span className="font-bold">{item.quantity} × {item.productName}</span><strong>{formatAdminCurrency(item.lineTotal)}</strong></div>)}</div>{selected.voidReason && <p className="mt-3 rounded-xl bg-rose-50 p-3 text-sm font-bold text-rose-700">Motivo de anulación: {selected.voidReason}</p>}<div className="mt-3 flex justify-between rounded-xl bg-slate-100 p-4 text-lg"><strong>Total</strong><strong>{formatAdminCurrency(selected.totalAmount)}</strong></div></div>}</AdminDialog>

@@ -5,8 +5,12 @@ import { cashSaleSignature, prepareCashPaymentAttempt, studentSaleSignature } fr
 
 test('la firma de venta no depende del orden del carrito', () => {
   assert.equal(
-    cashSaleSignature([{ productId: 'b', quantity: 2 }, { productId: 'a', quantity: 1 }]),
-    cashSaleSignature([{ productId: 'a', quantity: 1 }, { productId: 'b', quantity: 2 }]),
+    cashSaleSignature('register-1', [{ productId: 'b', quantity: 2 }, { productId: 'a', quantity: 1 }]),
+    cashSaleSignature('register-1', [{ productId: 'a', quantity: 1 }, { productId: 'b', quantity: 2 }]),
+  )
+  assert.notEqual(
+    cashSaleSignature('register-1', [{ productId: 'a', quantity: 1 }]),
+    cashSaleSignature('register-2', [{ productId: 'a', quantity: 1 }]),
   )
 })
 
@@ -23,12 +27,13 @@ test('un reintento conserva la misma clave idempotente', () => {
 
 test('la firma de consumo identifica estudiante y no depende del orden del carrito', () => {
   const lines = [{ productId: 'agua', quantity: 2 }, { productId: 'pan', quantity: 1 }]
-  assert.equal(studentSaleSignature('student-1', lines), studentSaleSignature('student-1', [...lines].reverse()))
-  assert.notEqual(studentSaleSignature('student-1', lines), studentSaleSignature('student-2', lines))
+  assert.equal(studentSaleSignature('register-1', 'student-1', lines), studentSaleSignature('register-1', 'student-1', [...lines].reverse()))
+  assert.notEqual(studentSaleSignature('register-1', 'student-1', lines), studentSaleSignature('register-1', 'student-2', lines))
+  assert.notEqual(studentSaleSignature('register-1', 'student-1', lines), studentSaleSignature('register-2', 'student-1', lines))
 })
 
 test('un reintento de consumo conserva la misma clave idempotente', () => {
-  const signature = studentSaleSignature('student-1', [{ productId: 'agua', quantity: 1 }])
+  const signature = studentSaleSignature('register-1', 'student-1', [{ productId: 'agua', quantity: 1 }])
   const first = prepareCashPaymentAttempt(null, signature, () => 'student-key-1')
   const retry = prepareCashPaymentAttempt(first, signature, () => 'student-key-2')
   assert.equal(retry.idempotencyKey, 'student-key-1')

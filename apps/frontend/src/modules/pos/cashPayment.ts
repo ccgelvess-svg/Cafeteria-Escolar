@@ -3,12 +3,12 @@ export interface CashPaymentAttempt {
   idempotencyKey: string
 }
 
-export function cashSaleSignature(lines: Array<{ productId: string; quantity: number }>) {
-  return `cash:${lines.map((line) => `${line.productId}:${line.quantity}`).sort().join('|')}`
+export function cashSaleSignature(cashRegisterId: string, lines: Array<{ productId: string; quantity: number }>) {
+  return `cash:${cashRegisterId}:${lines.map((line) => `${line.productId}:${line.quantity}`).sort().join('|')}`
 }
 
-export function studentSaleSignature(studentId: string, lines: Array<{ productId: string; quantity: number }>) {
-  return `student:${studentId}:${lines.map((line) => `${line.productId}:${line.quantity}`).sort().join('|')}`
+export function studentSaleSignature(cashRegisterId: string, studentId: string, lines: Array<{ productId: string; quantity: number }>) {
+  return `student:${cashRegisterId}:${studentId}:${lines.map((line) => `${line.productId}:${line.quantity}`).sort().join('|')}`
 }
 
 export function prepareCashPaymentAttempt(

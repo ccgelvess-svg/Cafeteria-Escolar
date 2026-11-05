@@ -17,6 +17,7 @@ function periodStart(period: Period) {
 
 export function ReportsSection() {
   const [period, setPeriod] = useState<Period>('Semana')
+  const [registerId, setRegisterId] = useState('all')
   const [sales, setSales] = useState<RegisteredSale[]>([])
   const [notice, setNotice] = useState(false)
   const [error, setError] = useState('')
@@ -32,7 +33,8 @@ export function ReportsSection() {
     return () => window.removeEventListener(SALES_CHANGED_EVENT, refresh)
   }, [refresh])
 
-  const activeSales = useMemo(() => sales.filter((sale) => sale.status === 'completed' && new Date(sale.occurredAt) >= periodStart(period)), [sales, period])
+  const registers = useMemo(() => [...new Map(sales.filter((sale) => sale.registerId).map((sale) => [sale.registerId, sale.registerName ?? 'Sin nombre'])).entries()], [sales])
+  const activeSales = useMemo(() => sales.filter((sale) => sale.status === 'completed' && new Date(sale.occurredAt) >= periodStart(period) && (registerId === 'all' || sale.registerId === registerId)), [sales, period, registerId])
   const totalSales = activeSales.reduce((sum, sale) => sum + sale.totalAmount, 0)
   const cashRevenue = activeSales.filter((sale) => sale.paymentMethod === 'cash').reduce((sum, sale) => sum + sale.totalAmount, 0)
   const receivables = students.reduce((sum, student) => sum + splitBalance(student.netBalance).debt, 0)
@@ -57,7 +59,7 @@ export function ReportsSection() {
 
   return <div className="admin-page-stack"><PageHeader eyebrow="Análisis" title="Reportes" description="Ventas y recaudo reales; cada pago en efectivo se refleja al confirmarse." action={<button className="admin-secondary-button" onClick={() => setNotice(true)} type="button"><Download className="size-5" />Preparar exportación</button>} />
     {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700">{error}</div>}
-    <div className="flex flex-wrap gap-2">{(['Día', 'Semana', 'Mes'] as Period[]).map((item) => <button className={`min-h-11 rounded-xl px-5 text-sm font-black ${period === item ? 'bg-blue-700 text-white shadow' : 'border border-slate-200 bg-white text-slate-600'}`} onClick={() => setPeriod(item)} key={item} type="button">{item}</button>)}</div>
+    <div className="flex flex-wrap gap-2">{(['Día', 'Semana', 'Mes'] as Period[]).map((item) => <button className={`min-h-11 rounded-xl px-5 text-sm font-black ${period === item ? 'bg-blue-700 text-white shadow' : 'border border-slate-200 bg-white text-slate-600'}`} onClick={() => setPeriod(item)} key={item} type="button">{item}</button>)}<select className="admin-select ml-auto max-w-64" onChange={(event) => setRegisterId(event.target.value)} value={registerId}><option value="all">Todas las cajas</option>{registers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></div>
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[['Ventas', formatAdminCurrency(totalSales)], ['Recaudo efectivo', formatAdminCurrency(cashRevenue)], ['Cuentas por cobrar', formatAdminCurrency(receivables)], ['Ticket promedio', formatAdminCurrency(averageTicket)]].map(([label, value]) => <article className="admin-card" key={label}><p className="text-sm font-bold text-slate-500">{label}</p><p className="mt-2 text-2xl font-black text-slate-950">{value}</p><p className="mt-1 flex items-center gap-1 text-xs font-black text-emerald-700"><TrendingUp className="size-3.5" />Periodo: {period}</p></article>)}</section>
     <section className="admin-card"><h2 className="admin-card-title">Productos más vendidos</h2><p className="admin-card-subtitle">Unidades de ventas vigentes en el periodo</p><div className="mt-5 space-y-4">{topProducts.map(([name, units]) => <div key={name}><div className="flex justify-between gap-3 text-sm"><strong>{name}</strong><span className="font-bold text-slate-500">{units} unidades</span></div><div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-blue-700 to-sky-400" style={{ width: `${Math.max(4, (units / maxUnits) * 100)}%` }} /></div></div>)}{topProducts.length === 0 && <EmptyState>No hay ventas vigentes en este periodo.</EmptyState>}</div></section>
     <section className="admin-card"><div className="flex items-center gap-3"><div className="grid size-11 place-items-center rounded-xl bg-indigo-50 text-indigo-700"><FileClock /></div><div><h2 className="admin-card-title">Resumen por caja</h2><p className="admin-card-subtitle">Totales actualizados desde el POS</p></div></div><div className="admin-table-wrap mt-4"><table className="admin-table"><thead><tr><th>Caja</th><th>Ventas</th><th className="text-right">Total vendido</th><th className="text-right">Recaudo efectivo</th></tr></thead><tbody>{byRegister.map(([name, totals]) => <tr key={name}><td><strong>{name}</strong></td><td>{totals.sales}</td><td className="text-right font-black">{formatAdminCurrency(totals.total)}</td><td className="text-right font-black text-emerald-700">{formatAdminCurrency(totals.cash)}</td></tr>)}</tbody></table></div>{byRegister.length === 0 && <EmptyState>No hay ventas vigentes en este periodo.</EmptyState>}</section>
