@@ -4,9 +4,11 @@ import {
   BookOpenCheck,
   Boxes,
   CircleDollarSign,
+  Cloud,
   CloudOff,
   FileChartColumn,
   LayoutDashboard,
+  LoaderCircle,
   LogOut,
   Menu,
   MonitorCog,
@@ -23,6 +25,9 @@ import {
 
 import type { AdministrationSection } from '../types'
 import { useAuth } from '../../auth'
+import { supabase } from '../../../infrastructure/supabase/client'
+
+type ConnectivityStatus = 'checking' | 'connected' | 'offline' | 'unavailable'
 
 interface NavigationItem {
   id: AdministrationSection
@@ -51,12 +56,55 @@ interface AdminShellProps {
 export function AdminShell({ activeSection, onSectionChange, children }: AdminShellProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [now, setNow] = useState(() => new Date())
+  const [connectivity, setConnectivity] = useState<ConnectivityStatus>('checking')
   const { session, logout } = useAuth()
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    let active = true
+
+    async function checkConnectivity() {
+      if (!window.navigator.onLine) {
+        if (active) setConnectivity('offline')
+        return
+      }
+      if (!supabase) {
+        if (active) setConnectivity('unavailable')
+        return
+      }
+
+      const { error } = await supabase.auth.getUser()
+      if (active) setConnectivity(error ? 'unavailable' : 'connected')
+    }
+
+    const handleOffline = () => setConnectivity('offline')
+    const handleOnline = () => {
+      setConnectivity('checking')
+      void checkConnectivity()
+    }
+    void checkConnectivity()
+    const timer = window.setInterval(() => void checkConnectivity(), 60_000)
+    window.addEventListener('offline', handleOffline)
+    window.addEventListener('online', handleOnline)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [])
+
+  const connectivityIndicator = connectivity === 'connected'
+    ? { label: 'Conectado', Icon: Cloud, className: 'bg-emerald-50 text-emerald-700' }
+    : connectivity === 'checking'
+      ? { label: 'Verificando', Icon: LoaderCircle, className: 'bg-slate-100 text-slate-600' }
+      : connectivity === 'offline'
+        ? { label: 'Sin red', Icon: CloudOff, className: 'bg-rose-50 text-rose-600' }
+        : { label: 'No disponible', Icon: CloudOff, className: 'bg-amber-50 text-amber-700' }
 
   function selectSection(section: AdministrationSection) {
     onSectionChange(section)
@@ -112,9 +160,9 @@ export function AdminShell({ activeSection, onSectionChange, children }: AdminSh
             <BookOpenCheck aria-hidden="true" className="size-4 text-blue-600" />
             {new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }).format(now)}
           </div>
-          <div className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-50 px-3 text-sm font-black text-rose-600">
-            <CloudOff aria-hidden="true" className="size-5" />
-            <span className="hidden sm:inline">Sin conexión</span>
+          <div className={`flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-black ${connectivityIndicator.className}`}>
+            <connectivityIndicator.Icon aria-hidden="true" className={`size-5 ${connectivity === 'checking' ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">{connectivityIndicator.label}</span>
           </div>
           <button aria-label="Cerrar sesión" className="admin-icon-button" onClick={() => void logout()} title="Cerrar sesión" type="button"><LogOut aria-hidden="true" className="size-5" /></button>
         </header>
