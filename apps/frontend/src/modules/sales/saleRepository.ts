@@ -189,8 +189,9 @@ export async function listActiveCashRegisters() {
     throw new Error('No fue posible consultar las cajas activas.')
   }
   const registers = data as CashRegisterOption[]
-  storage?.setItem(CASH_REGISTERS_CACHE_KEY, JSON.stringify(registers))
-  return registers
+  const boundedRegisters = registers.slice(0, 20)
+  storage?.setItem(CASH_REGISTERS_CACHE_KEY, JSON.stringify(boundedRegisters))
+  return boundedRegisters
 }
 
 export async function listCashRegisterSummaries() {

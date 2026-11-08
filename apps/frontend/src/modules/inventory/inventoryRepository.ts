@@ -1,5 +1,6 @@
 import { requireSupabase } from '../../infrastructure/supabase/client'
 import { pendingProductQuantities } from '../../infrastructure/sync/outbox'
+import { rememberInventoryCacheRegister } from '../../infrastructure/storage/localStorageMaintenance'
 import { selectCashRegisterInventory, type ScopedInventoryProduct } from './inventoryScope'
 import type { CategoryDraft, InventoryCategory, InventoryMovement, ProductDraft } from './types'
 
@@ -38,8 +39,8 @@ function readCache<T>(key: string): T[] {
   } catch { return [] }
 }
 
-function writeCache<T>(key: string, value: T[]) {
-  if (typeof window !== 'undefined') window.localStorage.setItem(key, JSON.stringify(value))
+function writeCache<T>(key: string, value: T[], limit: number) {
+  if (typeof window !== 'undefined') window.localStorage.setItem(key, JSON.stringify(value.slice(0, limit)))
 }
 
 function mapProduct(row: ProductRow): ScopedInventoryProduct {
@@ -74,12 +75,13 @@ export async function listInventoryCategories() {
     throw new Error('No fue posible cargar las categorías autorizadas.')
   }
   const categories = (data as CategoryRow[]).map((row) => ({ ...row })) as InventoryCategory[]
-  writeCache(CATEGORIES_CACHE_KEY, categories)
+  writeCache(CATEGORIES_CACHE_KEY, categories, 100)
   return categories
 }
 
 export async function listInventoryProducts(cashRegisterId: string, activeOnly = false, includeCosts = true) {
   if (!cashRegisterId) return []
+  rememberInventoryCacheRegister(cashRegisterId)
   if (includeCosts) {
     const { data, error } = await requireSupabase().rpc('list_cash_register_inventory', {
       p_cash_register_id: cashRegisterId,
@@ -99,12 +101,13 @@ export async function listInventoryProducts(cashRegisterId: string, activeOnly =
     throw new Error('No fue posible cargar los productos autorizados.')
   }
   const products = (data as unknown as ProductRow[]).map(mapProduct)
-  writeCache(`${PRODUCTS_CACHE_KEY}:${cashRegisterId}`, products)
+  writeCache(`${PRODUCTS_CACHE_KEY}:${cashRegisterId}`, products, 250)
   return selectCashRegisterInventory(products, cashRegisterId, pendingProductQuantities(cashRegisterId))
 }
 
 export async function listInventoryMovements(cashRegisterId: string, limit = 200) {
   if (!cashRegisterId) return []
+  rememberInventoryCacheRegister(cashRegisterId)
   const { data, error } = await requireSupabase().from('cash_register_stock_movements')
     .select('id,product_id,quantity_delta,movement_type,reason,actor_user_id,occurred_at,source_sale_id,reverses_movement_id,cash_register_inventory(display_name,products(name))')
     .eq('cash_register_id', cashRegisterId).order('occurred_at', { ascending: false }).limit(limit)
@@ -120,7 +123,7 @@ export async function listInventoryMovements(cashRegisterId: string, limit = 200
     actorUserId: row.actor_user_id, occurredAt: row.occurred_at,
     sourceSaleId: row.source_sale_id ?? undefined, reversesMovementId: row.reverses_movement_id ?? undefined,
   }))
-  writeCache(`${MOVEMENTS_CACHE_KEY}:${cashRegisterId}`, movements)
+  writeCache(`${MOVEMENTS_CACHE_KEY}:${cashRegisterId}`, movements, 200)
   return movements
 }
 

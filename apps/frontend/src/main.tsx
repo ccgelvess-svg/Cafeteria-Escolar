@@ -2,8 +2,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { App } from './app/App'
+import { cleanupObsoleteLocalCaches } from './infrastructure/storage/localStorageMaintenance'
 import { AuthProvider } from './modules/auth'
 import './styles/index.css'
+
+cleanupObsoleteLocalCaches()
 
 const rootElement = document.getElementById('root')
 

@@ -1,4 +1,5 @@
 export const OUTBOX_KEY = 'cafeteria:sync-outbox:v1'
+const OUTBOX_RECOVERY_KEY = `${OUTBOX_KEY}:recovery`
 
 export interface PendingSaleItem {
   productId: string
@@ -22,7 +23,7 @@ export type PendingSaleOperation = {
   lastError?: string
 }
 
-export type OutboxStorage = Pick<Storage, 'getItem' | 'setItem'>
+export type OutboxStorage = Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem'>>
 
 export const LEGACY_PENDING_SALE_ERROR = 'Venta pendiente anterior sin caja asignada. Requiere revisión manual antes de sincronizar.'
 
@@ -30,26 +31,57 @@ export function pendingSaleValidationError(operation: PendingSaleOperation) {
   return operation.cashRegisterId ? null : LEGACY_PENDING_SALE_ERROR
 }
 
+function parsePendingSales(raw: string | null) {
+  if (!raw) return { valid: true, operations: [] as PendingSaleOperation[] }
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed)
+      ? { valid: true, operations: parsed as PendingSaleOperation[] }
+      : { valid: false, operations: [] as PendingSaleOperation[] }
+  } catch { return { valid: false, operations: [] as PendingSaleOperation[] } }
+}
+
+function uniquePendingSales(operations: PendingSaleOperation[]) {
+  const seen = new Set<string>()
+  return operations.filter((operation) => {
+    const key = operation.idempotencyKey || operation.id
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 export function readPendingSales(storage: OutboxStorage | null): PendingSaleOperation[] {
   if (!storage) return []
   const raw = storage.getItem(OUTBOX_KEY)
-  if (!raw) return []
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed as PendingSaleOperation[] : []
-  } catch {
-    storage.setItem(`${OUTBOX_KEY}:recovery`, raw)
-    return []
+  const primary = parsePendingSales(raw)
+  if (!primary.valid && raw && !storage.getItem(OUTBOX_RECOVERY_KEY)) {
+    storage.setItem(OUTBOX_RECOVERY_KEY, raw)
   }
+  const recovery = parsePendingSales(storage.getItem(OUTBOX_RECOVERY_KEY))
+  return uniquePendingSales([
+    ...(primary.valid ? primary.operations : []),
+    ...(recovery.valid ? recovery.operations : []),
+  ])
 }
 
 export function writePendingSales(storage: OutboxStorage | null, operations: PendingSaleOperation[]) {
-  if (storage) storage.setItem(OUTBOX_KEY, JSON.stringify(operations))
+  if (!storage) return
+  const unique = uniquePendingSales(operations)
+  storage.setItem(OUTBOX_KEY, JSON.stringify(unique))
+
+  const recoveryRaw = storage.getItem(OUTBOX_RECOVERY_KEY)
+  const recovery = parsePendingSales(recoveryRaw)
+  if (!recoveryRaw || !recovery.valid) return
+  const recoveryKeys = new Set(recovery.operations.map((operation) => operation.idempotencyKey || operation.id))
+  const stillPending = unique.filter((operation) => recoveryKeys.has(operation.idempotencyKey || operation.id))
+  if (stillPending.length > 0) storage.setItem(OUTBOX_RECOVERY_KEY, JSON.stringify(stillPending))
+  else storage.removeItem?.(OUTBOX_RECOVERY_KEY)
 }
 
 export function enqueuePendingSale(storage: OutboxStorage | null, operation: PendingSaleOperation) {
   const pending = readPendingSales(storage)
-  if (pending.some((item) => item.idempotencyKey === operation.idempotencyKey)) return false
+  if (pending.some((item) => item.id === operation.id || item.idempotencyKey === operation.idempotencyKey)) return false
   writePendingSales(storage, [...pending, operation])
   return true
 }
