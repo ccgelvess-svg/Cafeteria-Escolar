@@ -38,6 +38,17 @@ export interface CashRegisterOption {
   name: string
 }
 
+export interface SalesReport {
+  completedSales: number
+  totalAmount: number
+  cashRevenue: number
+  averageTicket: number
+  soldUnits: number
+  topProducts: Array<{ productName: string; units: number }>
+  byRegister: Array<{ registerId: string; registerName: string; sales: number; total: number; cash: number }>
+  hourlySales: Array<{ hour: number; sales: number }>
+}
+
 export const SALES_CHANGED_EVENT = 'cafeteria:sales-changed'
 const CASH_REGISTERS_CACHE_KEY = 'cafeteria:cash-registers:v1'
 
@@ -183,19 +194,25 @@ export async function listActiveCashRegisters() {
 }
 
 export async function listCashRegisterSummaries() {
-  const { data, error } = await requireSupabase().from('cash_registers')
-    .select('id,name,active,sales(id,total_amount,payment_method,status)')
-    .order('name')
+  const { data, error } = await requireSupabase().rpc('get_cash_register_summaries')
   if (error) throw new Error('No fue posible consultar las cajas autorizadas.')
   return (data as unknown as Array<{
-    id: string; name: string; active: boolean
-    sales: Array<{ id: string; total_amount: number; payment_method: RegisteredSale['paymentMethod']; status: RegisteredSale['status'] }>
+    id: string; name: string; active: boolean; completed_sales: number; voided_sales: number; cash_total: number
   }>).map((row): CashRegisterSummary => ({
     id: row.id,
     name: row.name,
     active: row.active,
-    completedSales: row.sales.filter((sale) => sale.status === 'completed').length,
-    voidedSales: row.sales.filter((sale) => sale.status === 'voided').length,
-    cashTotal: row.sales.filter((sale) => sale.status === 'completed' && sale.payment_method === 'cash').reduce((sum, sale) => sum + sale.total_amount, 0),
+    completedSales: row.completed_sales,
+    voidedSales: row.voided_sales,
+    cashTotal: row.cash_total,
   }))
+}
+
+export async function getSalesReport(start: Date, cashRegisterId?: string) {
+  const { data, error } = await requireSupabase().rpc('get_sales_report', {
+    p_start: start.toISOString(),
+    p_cash_register_id: cashRegisterId ?? null,
+  })
+  if (error) throw new Error(error.message || 'No fue posible consultar el reporte de ventas.')
+  return data as SalesReport
 }

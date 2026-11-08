@@ -79,9 +79,19 @@ export function PosPage() {
   const pendingCashSale = useRef<CashPaymentAttempt | null>(null)
   const pendingStudentSale = useRef<CashPaymentAttempt | null>(null)
   const { students: studentAccounts } = useStudents()
-  const { products: inventoryProducts, categories: inventoryCategories } = useInventory(false)
+  const { products: inventoryProducts, categories: inventoryCategories, loading: inventoryLoading, error: inventoryError } = useInventory(activeRegisterId, false, false)
   const { session, can } = useAuth()
   const activeRegister = registers.find((register) => register.id === activeRegisterId) ?? null
+
+  function selectRegister(registerId: string) {
+    if (purchaseInFlight.current) return
+    setActiveRegisterId(registerId)
+    setCart([])
+    setUndoStack([])
+    pendingCashSale.current = null
+    pendingStudentSale.current = null
+    lastCommittedSale.current = null
+  }
 
   useEffect(() => {
     void listActiveCashRegisters()
@@ -92,7 +102,7 @@ export function PosPage() {
       .catch((cause) => setRegisterError(cause instanceof Error ? cause.message : 'No fue posible cargar las cajas.'))
   }, [session])
 
-  const catalogProducts = useMemo<Product[]>(() => inventoryProducts.filter((item) => item.active).map((item) => {
+  const catalogProducts = useMemo<Product[]>(() => inventoryProducts.filter((item) => item.active && item.price > 0).map((item) => {
     const visual = productVisual(item)
     return {
       id: item.id,
@@ -187,7 +197,7 @@ export function PosPage() {
   }
 
   async function confirmStudentConsumption() {
-    if (!selectedStudent || total <= 0 || purchaseInFlight.current) return
+    if (!selectedStudent || total <= 0 || purchaseInFlight.current || inventoryLoading || inventoryError) return
     if (!can('pos:charge') || !session) {
       setDialog({ kind: 'notice', title: 'Operación no autorizada', message: 'Tu sesión no permite registrar consumos.' })
       return
@@ -227,7 +237,7 @@ export function PosPage() {
   }
 
   async function confirmCashSale() {
-    if (total <= 0 || purchaseInFlight.current) return
+    if (total <= 0 || purchaseInFlight.current || inventoryLoading || inventoryError) return
     if (!can('pos:charge') || !session) {
       setDialog({ kind: 'notice', title: 'Operación no autorizada', message: 'Tu sesión no permite registrar ventas.' })
       return
@@ -284,7 +294,7 @@ export function PosPage() {
 
   return (
     <div className="pos-shell flex min-h-dvh flex-col bg-[#eef5fa] text-slate-900">
-      <TopBar activeRegisterId={activeRegisterId} registers={registers} onSelectRegister={setActiveRegisterId} />
+      <TopBar activeRegisterId={activeRegisterId} registers={registers} onSelectRegister={selectRegister} />
 
       {!activeRegister ? <main className="mx-auto grid w-full max-w-2xl flex-1 place-items-center p-4">
         <section className="w-full rounded-2xl border border-blue-200 bg-white p-6 text-center shadow-lg">
@@ -292,7 +302,7 @@ export function PosPage() {
           <h2 className="mt-3 text-2xl font-black text-slate-950">Selecciona la caja para iniciar</h2>
           <p className="mt-2 font-semibold text-slate-500">Las ventas quedarán asociadas únicamente a la caja elegida.</p>
           {registerError && <p className="mt-4 rounded-xl bg-rose-50 p-3 font-bold text-rose-700">{registerError}</p>}
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">{registers.map((register) => <button className="min-h-14 rounded-xl bg-blue-700 px-4 text-lg font-black text-white hover:bg-blue-800" key={register.id} onClick={() => setActiveRegisterId(register.id)} type="button">{register.name}</button>)}</div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">{registers.map((register) => <button className="min-h-14 rounded-xl bg-blue-700 px-4 text-lg font-black text-white hover:bg-blue-800" key={register.id} onClick={() => selectRegister(register.id)} type="button">{register.name}</button>)}</div>
         </section>
       </main> : <main className="pos-layout mx-auto grid min-h-0 w-full max-w-[1600px] flex-1 gap-2 p-2 sm:p-3 lg:p-2">
         <div className="pos-catalog-column flex min-w-0 flex-col gap-2">
@@ -308,6 +318,7 @@ export function PosPage() {
             students={students}
           />
 
+          {inventoryError && <p role="alert" className="rounded-xl bg-rose-50 p-3 font-bold text-rose-700">{inventoryError}</p>}
           <ProductCatalog
             category={category}
             categories={catalogCategories}

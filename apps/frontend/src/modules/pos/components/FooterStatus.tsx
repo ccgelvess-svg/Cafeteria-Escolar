@@ -2,7 +2,7 @@ import { CloudUpload, RefreshCw } from 'lucide-react'
 import { useSyncStatus } from '../../../infrastructure/sync/useSyncStatus'
 
 export function FooterStatus() {
-  const { lastSyncAt, online, pending } = useSyncStatus()
+  const { lastSyncAt, legacyPending, online, pending } = useSyncStatus()
   const lastSync = lastSyncAt
     ? new Intl.DateTimeFormat('es-CO', { hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(lastSyncAt))
     : 'Sin sincronización registrada'
@@ -14,6 +14,7 @@ export function FooterStatus() {
           Pendientes:
           <strong className="text-base text-orange-600">{pending}</strong>
         </div>
+        {legacyPending > 0 && <strong className="text-rose-700">{legacyPending} venta(s) antigua(s) requieren revisión manual</strong>}
         <span aria-hidden="true" className="hidden h-5 w-px bg-slate-300 sm:block" />
         <div className="flex items-center gap-1.5">
           <RefreshCw aria-hidden="true" className="size-4 text-blue-600" />

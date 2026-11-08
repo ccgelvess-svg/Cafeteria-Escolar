@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Boxes, History, Layers3, PackagePlus, Pencil, Plus, RefreshCw, Search, TrendingDown, TrendingUp } from 'lucide-react'
 
 import { AdminDialog, EmptyState, PageHeader, StatusPill } from '../administration/components/AdminUi'
 import { formatAdminCurrency } from '../administration/format'
 import { useAuth } from '../auth'
+import { listActiveCashRegisters, type CashRegisterOption } from '../sales'
 import { recordStockMovement, saveInventoryCategory, saveInventoryProduct } from './inventoryRepository'
 import type { CategoryDraft, InventoryProduct, ProductDraft } from './types'
 import { useInventory } from './useInventory'
@@ -27,9 +28,21 @@ function slugify(value: string) {
 }
 
 export function InventorySection() {
-  const { products, categories, movements, loading, error, refresh } = useInventory()
-  const { can } = useAuth()
+  const { can, session } = useAuth()
+  const [registers, setRegisters] = useState<CashRegisterOption[]>([])
+  const [cashRegisterId, setCashRegisterId] = useState('')
+  const [registerError, setRegisterError] = useState('')
+  const { products, categories, movements, loading, error, refresh } = useInventory(cashRegisterId)
   const writable = can('inventory:write')
+  const categoryWritable = session?.user.role === 'administrator'
+  useEffect(() => {
+    void listActiveCashRegisters().then((items) => {
+      setRegisters(items)
+      setCashRegisterId((current) => current && items.some((item) => item.id === current)
+        ? current : session?.user.cashRegisterId ?? items[0]?.id ?? '')
+      setRegisterError('')
+    }).catch((cause) => setRegisterError(cause instanceof Error ? cause.message : 'No fue posible cargar las cajas.'))
+  }, [session?.user.cashRegisterId])
   const [view, setView] = useState<View>('products')
   const [query, setQuery] = useState('')
   const [productEditor, setProductEditor] = useState<ProductForm | null>(null)
@@ -54,10 +67,10 @@ export function InventorySection() {
   }
 
   async function submitProduct() {
-    if (!productEditor) return
+    if (!productEditor || !cashRegisterId) return
     setBusy(true); setNotice('')
     try {
-      await saveInventoryProduct({
+      await saveInventoryProduct(cashRegisterId, {
         ...productEditor, price: Number(productEditor.price), cost: Number(productEditor.cost),
         minimumStock: Number(productEditor.minimumStock),
       })
@@ -67,7 +80,7 @@ export function InventorySection() {
   }
 
   async function submitCategory() {
-    if (!categoryEditor) return
+    if (!categoryEditor || !categoryWritable) return
     setBusy(true); setNotice('')
     try { await saveInventoryCategory(categoryEditor); setCategoryEditor(null) }
     catch (cause) { setNotice(cause instanceof Error ? cause.message : 'No fue posible guardar la categoría.') }
@@ -75,12 +88,12 @@ export function InventorySection() {
   }
 
   async function submitMovement() {
-    if (!stockProduct) return
+    if (!stockProduct || !cashRegisterId) return
     const absolute = Number(movementQuantity)
     const delta = movementType === 'adjustment' ? absolute : Math.abs(absolute)
     setBusy(true); setNotice('')
     try {
-      await recordStockMovement({ productId: stockProduct.id, quantityDelta: delta, type: movementType, reason: movementReason })
+      await recordStockMovement(cashRegisterId, { productId: stockProduct.id, quantityDelta: delta, type: movementType, reason: movementReason })
       setStockProduct(null)
     } catch (cause) { setNotice(cause instanceof Error ? cause.message : 'No fue posible registrar el movimiento.') }
     finally { setBusy(false) }
@@ -95,6 +108,8 @@ export function InventorySection() {
 
   return <div className="admin-page-stack">
     <PageHeader eyebrow="Control de existencias" title="Inventarios" description="Productos, costos, entradas, ajustes, mínimos y trazabilidad conectados al POS." action={writable ? <button className="admin-primary-button" onClick={() => setProductEditor(productForm(undefined, activeCategories[0]?.id))} type="button"><Plus className="size-5" />Nuevo producto</button> : undefined} />
+    <label className="admin-field">Caja de inventario<select className="admin-select" value={cashRegisterId} onChange={(event) => { setCashRegisterId(event.target.value); setProductEditor(null); setStockProduct(null) }}><option value="">Selecciona una caja</option>{registers.map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}</select></label>
+    {registerError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700">{registerError}</p>}
     {(error || notice) && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700">{error || notice}</div>}
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <div className="admin-card"><p className="text-sm font-bold text-slate-500">Productos activos</p><p className="mt-1 text-3xl font-black">{products.filter((p) => p.active).length}</p></div>
@@ -117,7 +132,7 @@ export function InventorySection() {
 
     {view === 'history' && <section className="admin-card"><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Fecha</th><th>Producto</th><th>Tipo</th><th>Motivo</th><th className="text-right">Cambio</th><th>Referencia</th></tr></thead><tbody>{movements.map((movement) => <tr key={movement.id}><td>{new Intl.DateTimeFormat('es-CO', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(movement.occurredAt))}</td><td><strong>{movement.productName}</strong></td><td>{movementLabels[movement.type]}</td><td>{movement.reason}</td><td className={`text-right font-black ${movement.quantityDelta > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>{movement.quantityDelta > 0 ? '+' : ''}{movement.quantityDelta}</td><td className="font-mono text-xs">{movement.sourceSaleId ? `Venta ${movement.sourceSaleId.slice(0, 8)}` : `Manual ${movement.actorUserId.slice(0, 8)}`}</td></tr>)}</tbody></table></div>{!loading && movements.length === 0 && <EmptyState>No hay movimientos de inventario.</EmptyState>}</section>}
 
-    {view === 'categories' && <section className="admin-card"><div className="flex items-center justify-between gap-3"><div><h2 className="admin-card-title">Categorías</h2><p className="admin-card-subtitle">Organización visible también en el catálogo del POS.</p></div>{writable && <button className="admin-primary-button" onClick={() => setCategoryEditor({ ...emptyCategory })} type="button"><Plus className="size-4" />Nueva categoría</button>}</div><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{categories.map((category) => <article className="rounded-xl border border-slate-200 p-4" key={category.id}><div className="flex items-start gap-3"><Layers3 className="size-6 text-blue-600" /><div className="min-w-0 flex-1"><h3 className="font-black">{category.name}</h3><p className="text-xs font-semibold text-slate-400">{category.slug}</p></div><StatusPill active={category.active} /></div>{writable && <button className="admin-secondary-button mt-3 w-full" onClick={() => setCategoryEditor({ ...category })} type="button"><Pencil className="size-4" />Editar</button>}</article>)}</div></section>}
+    {view === 'categories' && <section className="admin-card"><div className="flex items-center justify-between gap-3"><div><h2 className="admin-card-title">Categorías</h2><p className="admin-card-subtitle">Catálogo general administrado de forma central.</p></div>{categoryWritable && <button className="admin-primary-button" onClick={() => setCategoryEditor({ ...emptyCategory })} type="button"><Plus className="size-4" />Nueva categoría</button>}</div><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{categories.map((category) => <article className="rounded-xl border border-slate-200 p-4" key={category.id}><div className="flex items-start gap-3"><Layers3 className="size-6 text-blue-600" /><div className="min-w-0 flex-1"><h3 className="font-black">{category.name}</h3><p className="text-xs font-semibold text-slate-400">{category.slug}</p></div><StatusPill active={category.active} /></div>{categoryWritable && <button className="admin-secondary-button mt-3 w-full" onClick={() => setCategoryEditor({ ...category })} type="button"><Pencil className="size-4" />Editar</button>}</article>)}</div></section>}
 
     <AdminDialog open={Boolean(productEditor)} title={productEditor?.id ? 'Editar producto' : 'Crear producto'} description="Los cambios de precio y disponibilidad se reflejan en el POS." onClose={() => setProductEditor(null)} size="lg" footer={<><button className="admin-secondary-button" onClick={() => setProductEditor(null)} type="button">Cancelar</button><button className="admin-primary-button" disabled={busy || !productEditor?.name || !productEditor?.categoryId} onClick={() => void submitProduct()} type="button">Guardar producto</button></>}>
       {productEditor && <div className="grid gap-4 sm:grid-cols-2"><label className="admin-field sm:col-span-2">Nombre<input className="admin-input" onChange={(e) => setProductEditor({ ...productEditor, name: e.target.value })} value={productEditor.name} /></label><label className="admin-field">Categoría<select className="admin-select" onChange={(e) => setProductEditor({ ...productEditor, categoryId: e.target.value })} value={productEditor.categoryId}>{activeCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label className="admin-field">Subcategoría<input className="admin-input" onChange={(e) => setProductEditor({ ...productEditor, subcategory: e.target.value })} value={productEditor.subcategory} /></label><label className="admin-field">Precio de venta<input className="admin-input" min="0" onChange={(e) => setProductEditor({ ...productEditor, price: e.target.value })} type="number" value={productEditor.price} /></label><label className="admin-field">Costo<input className="admin-input" min="0" onChange={(e) => setProductEditor({ ...productEditor, cost: e.target.value })} type="number" value={productEditor.cost} /></label><label className="admin-field">Stock mínimo<input className="admin-input" min="0" onChange={(e) => setProductEditor({ ...productEditor, minimumStock: e.target.value })} type="number" value={productEditor.minimumStock} /></label><label className="admin-field">SKU opcional<input className="admin-input" onChange={(e) => setProductEditor({ ...productEditor, sku: e.target.value })} value={productEditor.sku ?? ''} /></label><label className="flex items-center gap-2 font-bold text-slate-700 sm:col-span-2"><input checked={productEditor.active} onChange={(e) => setProductEditor({ ...productEditor, active: e.target.checked })} type="checkbox" />Producto activo y visible en POS</label></div>}

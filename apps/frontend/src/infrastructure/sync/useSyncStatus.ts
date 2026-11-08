@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { getLastSyncAt, readPendingSales, SYNC_STATUS_EVENT, syncPendingSales } from './outbox'
+import { pendingSaleValidationError } from './outboxState'
 
 export function useSyncStatus() {
-  const snapshot = useCallback(() => ({
-    online: typeof navigator === 'undefined' ? true : navigator.onLine,
-    pending: readPendingSales().length,
-    lastSyncAt: getLastSyncAt(),
-  }), [])
+  const snapshot = useCallback(() => {
+    const pendingSales = readPendingSales()
+    return {
+      online: typeof navigator === 'undefined' ? true : navigator.onLine,
+      pending: pendingSales.length,
+      legacyPending: pendingSales.filter((operation) => pendingSaleValidationError(operation)).length,
+      lastSyncAt: getLastSyncAt(),
+    }
+  }, [])
   const [status, setStatus] = useState(snapshot)
 
   useEffect(() => {

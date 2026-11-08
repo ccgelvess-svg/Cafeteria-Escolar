@@ -24,6 +24,12 @@ export type PendingSaleOperation = {
 
 export type OutboxStorage = Pick<Storage, 'getItem' | 'setItem'>
 
+export const LEGACY_PENDING_SALE_ERROR = 'Venta pendiente anterior sin caja asignada. Requiere revisión manual antes de sincronizar.'
+
+export function pendingSaleValidationError(operation: PendingSaleOperation) {
+  return operation.cashRegisterId ? null : LEGACY_PENDING_SALE_ERROR
+}
+
 export function readPendingSales(storage: OutboxStorage | null): PendingSaleOperation[] {
   if (!storage) return []
   const raw = storage.getItem(OUTBOX_KEY)
@@ -48,9 +54,10 @@ export function enqueuePendingSale(storage: OutboxStorage | null, operation: Pen
   return true
 }
 
-export function pendingProductQuantities(storage: OutboxStorage | null) {
+export function pendingProductQuantities(storage: OutboxStorage | null, cashRegisterId: string) {
   const quantities = new Map<string, number>()
   for (const operation of readPendingSales(storage)) {
+    if (operation.cashRegisterId !== cashRegisterId) continue
     for (const item of operation.items) {
       quantities.set(item.productId, (quantities.get(item.productId) ?? 0) + item.quantity)
     }

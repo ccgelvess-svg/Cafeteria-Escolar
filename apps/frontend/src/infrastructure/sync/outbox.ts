@@ -3,6 +3,7 @@ import {
   drainPendingSales,
   enqueuePendingSale as enqueueStoredSale,
   pendingProductQuantities as storedProductQuantities,
+  pendingSaleValidationError,
   readPendingSales as readStoredSales,
   type OutboxStorage,
   type PendingSaleOperation,
@@ -32,8 +33,8 @@ export function enqueuePendingSale(operation: PendingSaleOperation, storage: Out
   return added
 }
 
-export function pendingProductQuantities(storage: OutboxStorage | null = browserStorage()) {
-  return storedProductQuantities(storage)
+export function pendingProductQuantities(cashRegisterId: string, storage: OutboxStorage | null = browserStorage()) {
+  return storedProductQuantities(storage, cashRegisterId)
 }
 
 export function getLastSyncAt(storage: OutboxStorage | null = browserStorage()) {
@@ -43,6 +44,8 @@ export function getLastSyncAt(storage: OutboxStorage | null = browserStorage()) 
 let syncInFlight: Promise<void> | null = null
 
 async function send(operation: PendingSaleOperation) {
+  const validationError = pendingSaleValidationError(operation)
+  if (validationError) throw new Error(validationError)
   const rpc = operation.kind === 'cash-sale' ? 'record_cash_sale' : 'record_student_sale'
   const params = operation.kind === 'cash-sale'
     ? {
@@ -50,7 +53,7 @@ async function send(operation: PendingSaleOperation) {
         p_total_amount: operation.totalAmount,
         p_items: operation.items,
         p_idempotency_key: operation.idempotencyKey,
-        ...(operation.cashRegisterId ? { p_cash_register_id: operation.cashRegisterId } : {}),
+        p_cash_register_id: operation.cashRegisterId,
       }
     : {
         p_sale_id: operation.saleId,
@@ -59,7 +62,7 @@ async function send(operation: PendingSaleOperation) {
         p_items: operation.items,
         p_device_id: operation.deviceId,
         p_idempotency_key: operation.idempotencyKey,
-        ...(operation.cashRegisterId ? { p_cash_register_id: operation.cashRegisterId } : {}),
+        p_cash_register_id: operation.cashRegisterId,
       }
   const { error } = await requireSupabase().rpc(rpc, params)
   if (error) throw new Error(error.message || 'No fue posible sincronizar la venta.')
