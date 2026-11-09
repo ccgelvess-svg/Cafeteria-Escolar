@@ -24,10 +24,12 @@ import { DemoDialog, type DialogKind } from './components/DemoDialog'
 import { FooterStatus } from './components/FooterStatus'
 import { ModeTabs } from './components/ModeTabs'
 import { ProductCatalog } from './components/ProductCatalog'
+import { StudentPaymentDialog } from './components/StudentPaymentDialog'
 import { TopBar } from './components/TopBar'
 import { cashSaleSignature, prepareCashPaymentAttempt, studentSaleSignature, type CashPaymentAttempt } from './cashPayment'
+import { parseStudentPaymentValue, studentPaymentSignature } from './studentPayment'
 import { canUseCashRegister, useAuth } from '../auth'
-import { createIdempotencyKey, listStudentMovements, splitBalance, useStudents } from '../students'
+import { createIdempotencyKey, listStudentMovements, registerMovement, splitBalance, useStudents } from '../students'
 import { listActiveCashRegisters, registerCashSale, registerStudentSale, type CashRegisterOption } from '../sales'
 import { useInventory } from '../inventory'
 
@@ -70,6 +72,12 @@ export function PosPage() {
   const [paymentBusy, setPaymentBusy] = useState(false)
   const [studentQuery, setStudentQuery] = useState('')
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
+  const [studentPaymentOpen, setStudentPaymentOpen] = useState(false)
+  const [studentPaymentStudentId, setStudentPaymentStudentId] = useState<string | null>(null)
+  const [studentPaymentQuery, setStudentPaymentQuery] = useState('')
+  const [studentPaymentValue, setStudentPaymentValue] = useState('')
+  const [studentPaymentBusy, setStudentPaymentBusy] = useState(false)
+  const [studentPaymentError, setStudentPaymentError] = useState('')
   const [dialog, setDialog] = useState<DialogState>(closedDialog)
   const [registers, setRegisters] = useState<CashRegisterOption[]>([])
   const [activeRegisterId, setActiveRegisterId] = useState('')
@@ -78,6 +86,8 @@ export function PosPage() {
   const lastCommittedSale = useRef<string | null>(null)
   const pendingCashSale = useRef<CashPaymentAttempt | null>(null)
   const pendingStudentSale = useRef<CashPaymentAttempt | null>(null)
+  const pendingStudentPayment = useRef<CashPaymentAttempt | null>(null)
+  const studentPaymentInFlight = useRef(false)
   const { students: studentAccounts } = useStudents()
   const { products: inventoryProducts, categories: inventoryCategories, loading: inventoryLoading, error: inventoryError } = useInventory(activeRegisterId, false, false)
   const { session, can } = useAuth()
@@ -139,6 +149,7 @@ export function PosPage() {
     return { accountId: student.id, id: student.code, name: `${student.firstName} ${student.lastName}`, course: `${student.grade} ${student.group}`, balance: split.balance, debt: split.debt }
   }), [studentAccounts])
   const selectedStudent = students.find((student) => student.accountId === selectedStudentId) ?? null
+  const studentPaymentStudent = students.find((student) => student.accountId === studentPaymentStudentId) ?? null
 
   const total = useMemo(
     () => cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0),
@@ -194,6 +205,52 @@ export function PosPage() {
   function selectStudent(student: Student) {
     setSelectedStudentId(student.accountId)
     setStudentQuery('')
+  }
+
+  function openStudentPayment() {
+    setStudentPaymentStudentId(selectedStudent?.accountId ?? null)
+    setStudentPaymentQuery('')
+    setStudentPaymentValue('')
+    setStudentPaymentError('')
+    setStudentPaymentOpen(true)
+  }
+
+  async function confirmStudentPayment() {
+    const amount = parseStudentPaymentValue(studentPaymentValue)
+    if (!studentPaymentStudent || amount <= 0 || studentPaymentInFlight.current) return
+    if (!session || session.user.role !== 'administrator') {
+      setStudentPaymentError('Tu sesión no permite registrar abonos.')
+      return
+    }
+    const movementType = studentPaymentStudent.debt > 0 ? 'debt-payment' : 'top-up'
+    const signature = studentPaymentSignature(studentPaymentStudent.accountId, movementType, amount)
+    pendingStudentPayment.current = prepareCashPaymentAttempt(
+      pendingStudentPayment.current,
+      signature,
+      () => createIdempotencyKey('student-payment'),
+    )
+    studentPaymentInFlight.current = true
+    setStudentPaymentBusy(true)
+    setStudentPaymentError('')
+    try {
+      await registerMovement({
+        studentId: studentPaymentStudent.accountId,
+        type: movementType,
+        value: amount,
+        detail: movementType === 'debt-payment' ? 'Abono a cuenta' : 'Recarga de saldo',
+        responsible: session.user.displayName,
+        idempotencyKey: pendingStudentPayment.current.idempotencyKey,
+      })
+      pendingStudentPayment.current = null
+      setSelectedStudentId(studentPaymentStudent.accountId)
+      setStudentPaymentOpen(false)
+      setDialog({ kind: 'notice', title: 'Abono registrado', message: `${formatCurrency(amount)} registrados para ${studentPaymentStudent.name}.` })
+    } catch (cause) {
+      setStudentPaymentError(cause instanceof Error ? cause.message : 'No fue posible registrar el abono.')
+    } finally {
+      studentPaymentInFlight.current = false
+      setStudentPaymentBusy(false)
+    }
   }
 
   async function confirmStudentConsumption() {
@@ -341,9 +398,7 @@ export function PosPage() {
           onPrimaryAction={() => mode === 'student'
             ? void confirmStudentConsumption()
             : void confirmCashSale()}
-          onRegisterPayment={() =>
-            showDemoNotice('Recargas y abonos', 'Registra el movimiento desde Administración → Estudiantes. El saldo se actualizará aquí automáticamente.')
-          }
+          onRegisterPayment={openStudentPayment}
           onRemove={removeProduct}
           onShowHistory={() => mode === 'student'
             ? void showStudentHistory()
@@ -354,6 +409,21 @@ export function PosPage() {
       </main>}
 
       <FooterStatus />
+
+      <StudentPaymentDialog
+        busy={studentPaymentBusy}
+        error={studentPaymentError}
+        onClose={() => { if (!studentPaymentBusy) setStudentPaymentOpen(false) }}
+        onConfirm={() => void confirmStudentPayment()}
+        onQueryChange={setStudentPaymentQuery}
+        onSelectStudent={(studentId) => { setStudentPaymentStudentId(studentId); setStudentPaymentError('') }}
+        onValueChange={(value) => { setStudentPaymentValue(value); setStudentPaymentError('') }}
+        open={studentPaymentOpen}
+        query={studentPaymentQuery}
+        selectedStudentId={studentPaymentStudentId}
+        students={students}
+        value={studentPaymentValue}
+      />
 
       <DemoDialog
         kind={dialog.kind}

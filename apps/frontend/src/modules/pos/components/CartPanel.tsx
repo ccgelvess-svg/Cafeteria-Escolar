@@ -163,7 +163,6 @@ export function CartPanel({
           </button>
           <button
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-lg font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={!student}
             onClick={onRegisterPayment}
             type="button"
           >
