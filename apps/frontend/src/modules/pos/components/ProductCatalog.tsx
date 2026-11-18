@@ -48,13 +48,13 @@ export function ProductCatalog({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-1 flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
-        <label className="relative block min-w-0 flex-1 sm:w-56 sm:flex-none lg:w-64 xl:w-72">
+      <div className="mb-2 min-w-0">
+        <label className="relative block min-w-0">
           <span className="sr-only">Buscar productos por nombre</span>
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
           <input
             autoComplete="off"
-            className="min-h-11 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-11 text-sm font-semibold text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-3 focus:ring-blue-100 sm:text-base"
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-10 text-[0.8rem] font-semibold text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-3 focus:ring-blue-100"
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Buscar producto por nombre"
             type="search"
@@ -62,21 +62,23 @@ export function ProductCatalog({
           />
           {query && <button
             aria-label="Limpiar búsqueda"
-            className="absolute right-0 top-0 grid size-11 place-items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            className="absolute right-0 top-0 grid size-10 place-items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
             onClick={() => setQuery('')}
             type="button"
           >
             <X aria-hidden="true" className="size-5" />
           </button>}
         </label>
+      </div>
 
-        <div className="category-scroll flex min-h-11 min-w-0 flex-1 snap-x snap-mandatory justify-start gap-2 overflow-x-auto overscroll-x-contain whitespace-nowrap pb-1" aria-label="Categorías">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 sm:flex-row">
+        <div className="category-scroll flex shrink-0 snap-x snap-mandatory justify-start gap-1.5 overflow-x-auto overscroll-contain whitespace-nowrap pb-1 sm:w-[110px] sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto sm:pb-0 sm:pr-1" aria-label="Categorías">
           {categories.map(({ id, label, icon: Icon }) => {
             const selected = category === id
             return (
               <button
                 aria-pressed={selected}
-                className={`flex min-h-11 shrink-0 snap-start items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-sm font-bold leading-tight transition sm:gap-2 sm:px-4 sm:text-base ${
+                className={`flex h-10 min-w-max shrink-0 snap-start items-center justify-start gap-1.5 whitespace-nowrap rounded-lg px-2 text-[0.8rem] font-bold leading-tight transition sm:w-full sm:min-w-0 ${
                   selected
                     ? 'bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-md'
                     : 'border border-slate-200 bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700'
@@ -85,13 +87,14 @@ export function ProductCatalog({
                 onClick={() => onCategoryChange(id)}
                 type="button"
               >
-                <Icon aria-hidden="true" className="size-5 shrink-0" />
-                <span>{label}</span>
+                <Icon aria-hidden="true" className="size-4 shrink-0" />
+                <span className="truncate" title={label}>{label}</span>
               </button>
             )
           })}
         </div>
-      </div>
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
       {availableSubcategories.length > 1 && <div className="subcategory-scroll mt-1 flex min-h-11 gap-2 overflow-x-auto overscroll-x-contain pb-1" aria-label="Subcategorías">
         {availableSubcategories.map((item) => {
@@ -143,6 +146,8 @@ export function ProductCatalog({
         {filteredProducts.length === 0 && <div className="col-span-full grid min-h-28 place-items-center rounded-xl border border-dashed border-slate-300 bg-white/70 px-4 text-center text-sm font-bold text-slate-500">
           No hay productos que coincidan con la búsqueda y los filtros seleccionados.
         </div>}
+      </div>
+        </div>
       </div>
     </section>
   )
