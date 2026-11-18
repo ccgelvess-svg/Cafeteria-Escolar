@@ -48,8 +48,8 @@ export function ProductCatalog({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-1 flex items-center justify-start">
-        <label className="relative block min-w-0 flex-1 lg:max-w-md">
+      <div className="mb-1 flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+        <label className="relative block min-w-0 flex-1 sm:w-56 sm:flex-none lg:w-64 xl:w-72">
           <span className="sr-only">Buscar productos por nombre</span>
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
           <input
@@ -69,28 +69,28 @@ export function ProductCatalog({
             <X aria-hidden="true" className="size-5" />
           </button>}
         </label>
-      </div>
 
-      <div className="category-scroll flex min-h-11 snap-x snap-mandatory justify-start gap-2 overflow-x-auto overscroll-x-contain pb-1 lg:flex-wrap lg:overflow-x-visible" aria-label="Categorías">
-        {categories.map(({ id, label, icon: Icon }) => {
-          const selected = category === id
-          return (
-            <button
-              aria-pressed={selected}
-              className={`flex min-h-11 shrink-0 snap-start items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-sm font-bold leading-tight transition sm:gap-2 sm:px-4 sm:text-base ${
-                selected
-                  ? 'bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-md'
-                  : 'border border-slate-200 bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700'
-              }`}
-              key={id}
-              onClick={() => onCategoryChange(id)}
-              type="button"
-            >
-              <Icon aria-hidden="true" className="size-5 shrink-0" />
-              <span>{label}</span>
-            </button>
-          )
-        })}
+        <div className="category-scroll flex min-h-11 min-w-0 flex-1 snap-x snap-mandatory justify-start gap-2 overflow-x-auto overscroll-x-contain whitespace-nowrap pb-1" aria-label="Categorías">
+          {categories.map(({ id, label, icon: Icon }) => {
+            const selected = category === id
+            return (
+              <button
+                aria-pressed={selected}
+                className={`flex min-h-11 shrink-0 snap-start items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-sm font-bold leading-tight transition sm:gap-2 sm:px-4 sm:text-base ${
+                  selected
+                    ? 'bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-md'
+                    : 'border border-slate-200 bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700'
+                }`}
+                key={id}
+                onClick={() => onCategoryChange(id)}
+                type="button"
+              >
+                <Icon aria-hidden="true" className="size-5 shrink-0" />
+                <span>{label}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {availableSubcategories.length > 1 && <div className="subcategory-scroll mt-1 flex min-h-11 gap-2 overflow-x-auto overscroll-x-contain pb-1" aria-label="Subcategorías">
