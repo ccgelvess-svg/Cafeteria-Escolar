@@ -43,16 +43,16 @@ export function TopBar({ activeRegisterId, registers, onSelectRegister }: {
 
   return (
     <header className="pos-topbar shrink-0 bg-gradient-to-r from-blue-700 via-blue-600 to-sky-600 text-white shadow-md">
-      <div className="mx-auto flex min-h-16 max-w-[1600px] items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-          <Utensils aria-hidden="true" className="size-8 shrink-0 sm:size-9" strokeWidth={2.6} />
+      <div className="pos-topbar-inner mx-auto flex min-h-16 max-w-[1600px] items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4">
+        <div className="pos-topbar-brand flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+          <Utensils aria-hidden="true" className="pos-brand-icon size-8 shrink-0 sm:size-9" strokeWidth={2.6} />
           <h1 className="brand-title whitespace-nowrap font-extrabold tracking-tight">Cafetería Escolar</h1>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-4">
+        <div className="pos-topbar-controls flex min-w-0 items-center gap-2 sm:gap-4">
           <div aria-label={online ? `${pending} operaciones pendientes` : `Modo offline, ${pending} operaciones pendientes`} className={`flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 py-2 text-sm font-bold shadow-sm sm:px-3 sm:text-base ${online ? 'bg-emerald-600' : 'bg-rose-500'}`}>
             {online ? <Cloud aria-hidden="true" className="size-5" /> : <CloudOff aria-hidden="true" className="size-5" />}
-            <span className="offline-label">{online ? (pending > 0 ? `Sincronizando · ${pending}` : 'En línea') : `Modo offline · ${pending}`}</span>
+            <span className="offline-label pos-status-label">{online ? (pending > 0 ? `Sincronizando · ${pending}` : 'En línea') : `Modo offline · ${pending}`}</span>
           </div>
 
           {can('admin:access') && <a
@@ -61,13 +61,13 @@ export function TopBar({ activeRegisterId, registers, onSelectRegister }: {
             href="#/admin"
           >
             <Settings aria-hidden="true" className="size-5" />
-            <span className="hidden sm:inline">Admin</span>
+            <span className="pos-admin-label hidden sm:inline">Admin</span>
           </a>}
 
-          <label className="flex min-h-11 items-center gap-2 rounded-xl bg-white/15 px-2 text-sm font-bold">
-            <Store aria-hidden="true" className="size-5 shrink-0" />
+          <label className="pos-register flex min-h-11 min-w-0 items-center gap-2 rounded-xl bg-white/15 px-2 text-sm font-bold">
+            <Store aria-hidden="true" className="pos-register-icon size-5 shrink-0" />
             <span className="sr-only">Caja activa</span>
-            <select className="max-w-40 bg-transparent font-bold text-white outline-none" onChange={(event) => onSelectRegister(event.target.value)} value={activeRegisterId}>
+            <select className="pos-register-select min-w-0 max-w-40 bg-transparent font-bold text-white outline-none" onChange={(event) => onSelectRegister(event.target.value)} value={activeRegisterId}>
               <option className="text-slate-900" value="">Seleccionar caja</option>
               {registers.map((register) => <option className="text-slate-900" key={register.id} value={register.id}>{register.name}</option>)}
             </select>
