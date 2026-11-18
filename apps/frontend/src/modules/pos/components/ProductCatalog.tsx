@@ -1,4 +1,5 @@
-import type { LucideIcon } from 'lucide-react'
+import { Search, X, type LucideIcon } from 'lucide-react'
+import { useMemo, useState } from 'react'
 
 import { formatCurrency } from '../format'
 import type { Product } from '../types'
@@ -24,16 +25,53 @@ export function ProductCatalog({
   products,
   subcategories,
 }: ProductCatalogProps) {
+  const [query, setQuery] = useState('')
   const availableSubcategories = subcategories[category] ?? []
-  const filteredProducts = products.filter(
-    (product) =>
-      (category === 'todos' || product.category === category) &&
-      (subcategory === 'Todas' || subcategory === 'Todos' || product.subcategory === subcategory),
-  )
+  const filteredProducts = useMemo(() => {
+    const normalizedQuery = query
+      .trim()
+      .toLocaleLowerCase('es')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+
+    return products.filter((product) => {
+      const normalizedName = product.name
+        .toLocaleLowerCase('es')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+
+      return (category === 'todos' || product.category === category) &&
+        (subcategory === 'Todas' || subcategory === 'Todos' || product.subcategory === subcategory) &&
+        normalizedName.includes(normalizedQuery)
+    })
+  }, [category, products, query, subcategory])
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="category-scroll flex min-h-11 snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain pb-1" aria-label="Categorías">
+      <div className="mb-1 flex items-center justify-start">
+        <label className="relative block min-w-0 flex-1 lg:max-w-md">
+          <span className="sr-only">Buscar productos por nombre</span>
+          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
+          <input
+            autoComplete="off"
+            className="min-h-11 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-11 text-sm font-semibold text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-3 focus:ring-blue-100 sm:text-base"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar producto por nombre"
+            type="search"
+            value={query}
+          />
+          {query && <button
+            aria-label="Limpiar búsqueda"
+            className="absolute right-0 top-0 grid size-11 place-items-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+            onClick={() => setQuery('')}
+            type="button"
+          >
+            <X aria-hidden="true" className="size-5" />
+          </button>}
+        </label>
+      </div>
+
+      <div className="category-scroll flex min-h-11 snap-x snap-mandatory justify-start gap-2 overflow-x-auto overscroll-x-contain pb-1 lg:flex-wrap lg:overflow-x-visible" aria-label="Categorías">
         {categories.map(({ id, label, icon: Icon }) => {
           const selected = category === id
           return (
@@ -102,6 +140,9 @@ export function ProductCatalog({
             </button>
           )
         })}
+        {filteredProducts.length === 0 && <div className="col-span-full grid min-h-28 place-items-center rounded-xl border border-dashed border-slate-300 bg-white/70 px-4 text-center text-sm font-bold text-slate-500">
+          No hay productos que coincidan con la búsqueda y los filtros seleccionados.
+        </div>}
       </div>
     </section>
   )
