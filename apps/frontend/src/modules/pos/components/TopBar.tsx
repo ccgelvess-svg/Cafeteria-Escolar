@@ -75,10 +75,10 @@ export function TopBar({ activeRegisterId, registers, onSelectRegister }: {
 
           <button aria-label="Cerrar sesión" className="grid min-h-11 min-w-11 place-items-center rounded-xl text-blue-50 transition hover:bg-white/15" onClick={() => void logout()} title="Cerrar sesión" type="button"><LogOut aria-hidden="true" className="size-5" /></button>
 
-          <div className="hidden h-11 w-px bg-white/40 xl:block" />
-          <div className="hidden min-w-36 text-right leading-tight xl:block">
-            <div className="text-lg font-extrabold">{formatTime(now)}</div>
-            <div className="mt-1 flex items-center justify-end gap-1 text-xs font-medium text-blue-50">
+          <div className="pos-clock-divider hidden h-11 w-px bg-white/40 xl:block" />
+          <div className="pos-clock hidden min-w-36 text-right leading-tight xl:block">
+            <div className="pos-clock-time text-lg font-extrabold">{formatTime(now)}</div>
+            <div className="pos-clock-date mt-1 flex items-center justify-end gap-1 text-xs font-medium text-blue-50">
               <CalendarDays aria-hidden="true" className="size-3.5" />
               {formatDate(now)}
             </div>

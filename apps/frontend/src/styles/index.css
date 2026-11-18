@@ -412,38 +412,63 @@ textarea:focus-visible {
   }
 }
 
-/* Encabezado compacto para tablets: 52 px con objetivos táctiles de 44 px. */
-@media (min-width: 640px) and (max-width: 1279px) {
+/* Encabezado compacto para tablets y PC: 48 px con objetivos táctiles de 44 px. */
+@media (min-width: 640px) {
   .pos-topbar-inner {
-    min-height: 52px;
-    gap: 0.5rem;
-    padding-block: 0.25rem;
+    min-height: 48px;
+    gap: 0.375rem;
+    padding: 0.125rem 0.625rem;
   }
 
   .pos-topbar-brand {
-    gap: 0.5rem;
-  }
-
-  .pos-brand-icon {
-    width: 1.75rem;
-    height: 1.75rem;
-  }
-
-  .pos-topbar .brand-title {
-    font-size: 1.125rem;
-  }
-
-  .pos-topbar-controls {
     gap: 0.375rem;
   }
 
+  .pos-brand-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .pos-topbar .brand-title {
+    font-size: 1rem;
+  }
+
+  .pos-topbar-controls {
+    gap: 0.25rem;
+  }
+
   .pos-topbar-controls > :is(a, button, div, label) {
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
+  }
+
+  .pos-topbar-controls > div:first-child,
+  .pos-topbar-controls > a,
+  .pos-register {
+    gap: 0.375rem;
+    padding-inline: 0.5rem;
   }
 
   .pos-register-select {
-    max-width: 8.5rem;
+    max-width: 8rem;
     text-overflow: ellipsis;
+  }
+
+  .pos-clock-divider {
+    height: 2rem;
+  }
+
+  .pos-clock {
+    min-width: 7.5rem;
+    line-height: 1;
+  }
+
+  .pos-clock-time {
+    font-size: 0.875rem;
+  }
+
+  .pos-clock-date {
+    margin-top: 0.125rem;
+    font-size: 0.625rem;
   }
 }
 
