@@ -26,12 +26,13 @@ import { ModeTabs } from './components/ModeTabs'
 import { ProductCatalog } from './components/ProductCatalog'
 import { StudentPaymentDialog } from './components/StudentPaymentDialog'
 import { TopBar } from './components/TopBar'
-import { cashSaleSignature, prepareCashPaymentAttempt, studentSaleSignature, type CashPaymentAttempt } from './cashPayment'
+import { cashSaleSignature, prepareCashPaymentAttempt, studentSaleSignature, teacherSaleSignature, type CashPaymentAttempt } from './cashPayment'
 import { parseStudentPaymentValue, studentPaymentSignature } from './studentPayment'
 import { canUseCashRegister, useAuth } from '../auth'
 import { createIdempotencyKey, listStudentMovements, registerMovement, splitBalance, useStudents } from '../students'
-import { listActiveCashRegisters, registerCashSale, registerStudentSale, type CashRegisterOption } from '../sales'
+import { listActiveCashRegisters, registerCashSale, registerStudentSale, registerTeacherSale, type CashRegisterOption } from '../sales'
 import { useInventory } from '../inventory'
+import { listTeacherMovements, registerTeacherPayment, useTeachers } from '../teachers'
 
 const initialCart: CartLine[] = []
 
@@ -72,7 +73,10 @@ export function PosPage() {
   const [paymentBusy, setPaymentBusy] = useState(false)
   const [studentQuery, setStudentQuery] = useState('')
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
+  const [teacherQuery, setTeacherQuery] = useState('')
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null)
   const [studentPaymentOpen, setStudentPaymentOpen] = useState(false)
+  const [paymentAccountMode, setPaymentAccountMode] = useState<'student' | 'teacher'>('student')
   const [studentPaymentStudentId, setStudentPaymentStudentId] = useState<string | null>(null)
   const [studentPaymentQuery, setStudentPaymentQuery] = useState('')
   const [studentPaymentValue, setStudentPaymentValue] = useState('')
@@ -86,9 +90,11 @@ export function PosPage() {
   const lastCommittedSale = useRef<string | null>(null)
   const pendingCashSale = useRef<CashPaymentAttempt | null>(null)
   const pendingStudentSale = useRef<CashPaymentAttempt | null>(null)
+  const pendingTeacherSale = useRef<CashPaymentAttempt | null>(null)
   const pendingStudentPayment = useRef<CashPaymentAttempt | null>(null)
   const studentPaymentInFlight = useRef(false)
   const { students: studentAccounts } = useStudents()
+  const { teachers: teacherAccounts, loading: teacherLoading, error: teacherError } = useTeachers(mode === 'teacher' ? activeRegisterId : '')
   const { products: inventoryProducts, categories: inventoryCategories, loading: inventoryLoading, error: inventoryError } = useInventory(activeRegisterId, false, false)
   const { session, can } = useAuth()
   const activeRegister = registers.find((register) => register.id === activeRegisterId) ?? null
@@ -100,6 +106,11 @@ export function PosPage() {
     setUndoStack([])
     pendingCashSale.current = null
     pendingStudentSale.current = null
+    pendingTeacherSale.current = null
+    setSelectedStudentId(null)
+    setSelectedTeacherId(null)
+    setStudentQuery('')
+    setTeacherQuery('')
     lastCommittedSale.current = null
   }
 
@@ -148,8 +159,14 @@ export function PosPage() {
     const split = splitBalance(student.netBalance)
     return { accountId: student.id, id: student.code, name: `${student.firstName} ${student.lastName}`, course: `${student.grade} ${student.group}`, balance: split.balance, debt: split.debt }
   }), [studentAccounts])
+  const teachers = useMemo<Student[]>(() => teacherAccounts.filter((teacher) => teacher.status === 'active').map((teacher) => {
+    const split = splitBalance(teacher.netBalance)
+    return { accountId: teacher.id, id: teacher.code, name: `${teacher.firstName} ${teacher.lastName}`, course: activeRegister?.name ?? 'Profesor', balance: split.balance, debt: split.debt }
+  }), [teacherAccounts, activeRegister])
   const selectedStudent = students.find((student) => student.accountId === selectedStudentId) ?? null
-  const studentPaymentStudent = students.find((student) => student.accountId === studentPaymentStudentId) ?? null
+  const selectedTeacher = teachers.find((teacher) => teacher.accountId === selectedTeacherId) ?? null
+  const paymentAccounts = paymentAccountMode === 'teacher' ? teachers : students
+  const studentPaymentStudent = paymentAccounts.find((account) => account.accountId === studentPaymentStudentId) ?? null
 
   const total = useMemo(
     () => cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0),
@@ -207,15 +224,22 @@ export function PosPage() {
     setStudentQuery('')
   }
 
-  function openStudentPayment() {
-    setStudentPaymentStudentId(selectedStudent?.accountId ?? null)
+  function selectTeacher(teacher: Student) {
+    setSelectedTeacherId(teacher.accountId)
+    setTeacherQuery('')
+  }
+
+  function openAccountPayment() {
+    const accountMode = mode === 'teacher' ? 'teacher' : 'student'
+    setPaymentAccountMode(accountMode)
+    setStudentPaymentStudentId(accountMode === 'teacher' ? selectedTeacher?.accountId ?? null : selectedStudent?.accountId ?? null)
     setStudentPaymentQuery('')
     setStudentPaymentValue('')
     setStudentPaymentError('')
     setStudentPaymentOpen(true)
   }
 
-  async function confirmStudentPayment() {
+  async function confirmAccountPayment() {
     const amount = parseStudentPaymentValue(studentPaymentValue)
     if (!studentPaymentStudent || amount <= 0 || studentPaymentInFlight.current) return
     if (!session || session.user.role !== 'administrator') {
@@ -223,26 +247,42 @@ export function PosPage() {
       return
     }
     const movementType = studentPaymentStudent.debt > 0 ? 'debt-payment' : 'top-up'
-    const signature = studentPaymentSignature(studentPaymentStudent.accountId, movementType, amount)
+    if (paymentAccountMode === 'teacher' && !activeRegister) {
+      setStudentPaymentError('Selecciona una caja activa antes de registrar el abono.')
+      return
+    }
+    const signature = `${paymentAccountMode}:${studentPaymentSignature(studentPaymentStudent.accountId, movementType, amount)}`
     pendingStudentPayment.current = prepareCashPaymentAttempt(
       pendingStudentPayment.current,
       signature,
-      () => createIdempotencyKey('student-payment'),
+      () => createIdempotencyKey(`${paymentAccountMode}-payment`),
     )
     studentPaymentInFlight.current = true
     setStudentPaymentBusy(true)
     setStudentPaymentError('')
     try {
-      await registerMovement({
-        studentId: studentPaymentStudent.accountId,
-        type: movementType,
-        value: amount,
-        detail: movementType === 'debt-payment' ? 'Abono a cuenta' : 'Recarga de saldo',
-        responsible: session.user.displayName,
-        idempotencyKey: pendingStudentPayment.current.idempotencyKey,
-      })
+      if (paymentAccountMode === 'teacher') {
+        await registerTeacherPayment({
+          teacherId: studentPaymentStudent.accountId,
+          cashRegisterId: activeRegister!.id,
+          type: movementType,
+          value: amount,
+          detail: movementType === 'debt-payment' ? 'Abono a cuenta docente' : 'Recarga de saldo docente',
+          idempotencyKey: pendingStudentPayment.current.idempotencyKey,
+        })
+      } else {
+        await registerMovement({
+          studentId: studentPaymentStudent.accountId,
+          type: movementType,
+          value: amount,
+          detail: movementType === 'debt-payment' ? 'Abono a cuenta' : 'Recarga de saldo',
+          responsible: session.user.displayName,
+          idempotencyKey: pendingStudentPayment.current.idempotencyKey,
+        })
+      }
       pendingStudentPayment.current = null
-      setSelectedStudentId(studentPaymentStudent.accountId)
+      if (paymentAccountMode === 'teacher') setSelectedTeacherId(studentPaymentStudent.accountId)
+      else setSelectedStudentId(studentPaymentStudent.accountId)
       setStudentPaymentOpen(false)
       setDialog({ kind: 'notice', title: 'Abono registrado', message: `${formatCurrency(amount)} registrados para ${studentPaymentStudent.name}.` })
     } catch (cause) {
@@ -288,6 +328,46 @@ export function PosPage() {
       setUndoStack([])
     } catch (cause) {
       setDialog({ kind: 'notice', title: 'No se registró el consumo', message: cause instanceof Error ? cause.message : 'Intenta nuevamente.' })
+    } finally {
+      purchaseInFlight.current = false
+    }
+  }
+
+  async function confirmTeacherConsumption() {
+    if (!selectedTeacher || total <= 0 || purchaseInFlight.current || inventoryLoading || inventoryError || teacherLoading || teacherError) return
+    if (!can('pos:charge') || !session) {
+      setDialog({ kind: 'notice', title: 'Operación no autorizada', message: 'Tu sesión no permite registrar fiados.' })
+      return
+    }
+    if (!activeRegister) {
+      setDialog({ kind: 'notice', title: 'Selecciona una caja', message: 'Debes elegir una caja activa antes de registrar ventas.' })
+      return
+    }
+    const saleSignature = teacherSaleSignature(activeRegister.id, selectedTeacher.accountId, cart.map(({ product, quantity }) => ({ productId: product.id, quantity })))
+    if (lastCommittedSale.current === saleSignature) return
+    purchaseInFlight.current = true
+    pendingTeacherSale.current = prepareCashPaymentAttempt(
+      pendingTeacherSale.current,
+      saleSignature,
+      () => createIdempotencyKey('teacher-sale'),
+    )
+    try {
+      const result = await registerTeacherSale({
+        cashRegisterId: activeRegister.id,
+        teacherId: selectedTeacher.accountId,
+        totalAmount: total,
+        idempotencyKey: pendingTeacherSale.current.idempotencyKey,
+        items: cart.map(({ product, quantity }) => ({ productId: product.id, productName: product.name, unitPrice: product.price, quantity })),
+      })
+      lastCommittedSale.current = saleSignature
+      pendingTeacherSale.current = null
+      setDialog(result.queued
+        ? { kind: 'notice', title: 'Fiado pendiente', message: `${formatCurrency(total)} quedó guardado localmente y solo se confirmará al sincronizar con el servidor.` }
+        : { kind: 'notice', title: 'Fiado registrado', message: `${formatCurrency(total)} cargados a la cuenta de ${selectedTeacher.name}.` })
+      setCart([])
+      setUndoStack([])
+    } catch (cause) {
+      setDialog({ kind: 'notice', title: 'No se registró el fiado', message: cause instanceof Error ? cause.message : 'Intenta nuevamente.' })
     } finally {
       purchaseInFlight.current = false
     }
@@ -345,6 +425,17 @@ export function PosPage() {
     }
   }
 
+  async function showTeacherHistory() {
+    if (!selectedTeacher || !activeRegister) return
+    try {
+      const movements = await listTeacherMovements(selectedTeacher.accountId, activeRegister.id)
+      const message = movements.length === 0 ? 'Este profesor todavía no tiene movimientos.' : movements.slice(0, 5).map((movement) => `${new Date(movement.occurredAt).toLocaleString('es-CO')} · ${movement.detail} · ${formatCurrency(movement.amount)}`).join('\n')
+      setDialog({ kind: 'history', title: `Historial de ${selectedTeacher.name}`, message })
+    } catch (cause) {
+      setDialog({ kind: 'notice', title: 'No fue posible consultar el historial', message: cause instanceof Error ? cause.message : 'Intenta nuevamente.' })
+    }
+  }
+
   function showDemoNotice(title: string, message: string) {
     setDialog({ kind: 'notice', title, message })
   }
@@ -368,14 +459,18 @@ export function PosPage() {
           <CustomerPanel
             mode={mode}
             onModeChange={setMode}
-            onQueryChange={setStudentQuery}
+            onQueryChange={mode === 'teacher' ? setTeacherQuery : setStudentQuery}
             onSelectStudent={selectStudent}
-            query={studentQuery}
+            onSelectTeacher={selectTeacher}
+            query={mode === 'teacher' ? teacherQuery : studentQuery}
             selectedStudent={selectedStudent}
+            selectedTeacher={selectedTeacher}
             students={students}
+            teachers={teachers}
           />
 
           {inventoryError && <p role="alert" className="rounded-xl bg-rose-50 p-3 font-bold text-rose-700">{inventoryError}</p>}
+          {mode === 'teacher' && teacherError && <p role="alert" className="rounded-xl bg-amber-50 p-3 font-bold text-amber-800">{teacherError}</p>}
           <ProductCatalog
             category={category}
             categories={catalogCategories}
@@ -389,6 +484,7 @@ export function PosPage() {
         </div>
 
         <CartPanel
+          account={mode === 'teacher' ? selectedTeacher : selectedStudent}
           canUndo={undoStack.length > 0}
           cart={cart}
           paymentBusy={paymentBusy}
@@ -397,31 +493,35 @@ export function PosPage() {
           onClear={clearCart}
           onPrimaryAction={() => mode === 'student'
             ? void confirmStudentConsumption()
-            : void confirmCashSale()}
-          onRegisterPayment={openStudentPayment}
+            : mode === 'teacher'
+              ? void confirmTeacherConsumption()
+              : void confirmCashSale()}
+          onRegisterPayment={openAccountPayment}
           onRemove={removeProduct}
           onShowHistory={() => mode === 'student'
             ? void showStudentHistory()
-            : showDemoNotice('Historial de demostración', 'La venta libre aún no registra transacciones.')}
+            : mode === 'teacher'
+              ? void showTeacherHistory()
+              : showDemoNotice('Historial de demostración', 'La venta libre aún no registra transacciones.')}
           onUndo={undoLastTouch}
-          student={selectedStudent}
         />
       </main>}
 
       <FooterStatus />
 
       <StudentPaymentDialog
+        accountLabel={paymentAccountMode === 'teacher' ? 'profesor' : 'estudiante'}
         busy={studentPaymentBusy}
         error={studentPaymentError}
         onClose={() => { if (!studentPaymentBusy) setStudentPaymentOpen(false) }}
-        onConfirm={() => void confirmStudentPayment()}
+        onConfirm={() => void confirmAccountPayment()}
         onQueryChange={setStudentPaymentQuery}
         onSelectStudent={(studentId) => { setStudentPaymentStudentId(studentId); setStudentPaymentError('') }}
         onValueChange={(value) => { setStudentPaymentValue(value); setStudentPaymentError('') }}
         open={studentPaymentOpen}
         query={studentPaymentQuery}
         selectedStudentId={studentPaymentStudentId}
-        students={students}
+        students={paymentAccounts}
         value={studentPaymentValue}
       />
 

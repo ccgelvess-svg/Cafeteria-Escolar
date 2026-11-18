@@ -11,6 +11,10 @@ export function studentSaleSignature(cashRegisterId: string, studentId: string, 
   return `student:${cashRegisterId}:${studentId}:${lines.map((line) => `${line.productId}:${line.quantity}`).sort().join('|')}`
 }
 
+export function teacherSaleSignature(cashRegisterId: string, teacherId: string, lines: Array<{ productId: string; quantity: number }>) {
+  return `teacher:${cashRegisterId}:${teacherId}:${lines.map((line) => `${line.productId}:${line.quantity}`).sort().join('|')}`
+}
+
 export function prepareCashPaymentAttempt(
   current: CashPaymentAttempt | null,
   signature: string,

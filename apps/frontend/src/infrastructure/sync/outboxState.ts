@@ -8,27 +8,50 @@ export interface PendingSaleItem {
   quantity: number
 }
 
-export type PendingSaleOperation = {
+interface PendingSaleOperationBase {
   id: string
-  kind: 'cash-sale' | 'student-sale'
   saleId: string
   idempotencyKey: string
   cashRegisterId?: string
   totalAmount: number
   items: PendingSaleItem[]
-  studentId?: string
   deviceId?: string
   createdAt: string
   attempts: number
   lastError?: string
 }
 
+export type PendingSaleOperation = PendingSaleOperationBase & (
+  | { kind: 'cash-sale'; studentId?: never; teacherId?: never }
+  | { kind: 'student-sale'; studentId: string; teacherId?: never }
+  | { kind: 'teacher-sale'; studentId?: never; teacherId: string }
+)
+
 export type OutboxStorage = Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem'>>
 
 export const LEGACY_PENDING_SALE_ERROR = 'Venta pendiente anterior sin caja asignada. Requiere revisión manual antes de sincronizar.'
 
 export function pendingSaleValidationError(operation: PendingSaleOperation) {
-  return operation.cashRegisterId ? null : LEGACY_PENDING_SALE_ERROR
+  const stored = operation as PendingSaleOperationBase & {
+    kind?: unknown
+    studentId?: unknown
+    teacherId?: unknown
+  }
+  if (typeof stored.cashRegisterId !== 'string' || !stored.cashRegisterId.trim()) return LEGACY_PENDING_SALE_ERROR
+  switch (stored.kind) {
+    case 'cash-sale':
+      return stored.studentId !== undefined || stored.teacherId !== undefined
+        ? 'Venta en efectivo pendiente con una cuenta personal asignada.'
+        : null
+    case 'student-sale':
+      if (typeof stored.studentId !== 'string' || !stored.studentId.trim()) return 'Venta estudiantil pendiente sin estudiante asignado.'
+      return stored.teacherId !== undefined ? 'Venta estudiantil pendiente con profesor cruzado.' : null
+    case 'teacher-sale':
+      if (typeof stored.teacherId !== 'string' || !stored.teacherId.trim()) return 'Venta docente pendiente sin profesor asignado.'
+      return stored.studentId !== undefined ? 'Venta docente pendiente con estudiante cruzado.' : null
+    default:
+      return 'Venta pendiente con tipo desconocido.'
+  }
 }
 
 function parsePendingSales(raw: string | null) {

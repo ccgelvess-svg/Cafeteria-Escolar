@@ -1,6 +1,7 @@
 export type AdministrationSection =
   | 'dashboard'
   | 'students'
+  | 'teachers'
   | 'balances'
   | 'inventory'
   | 'users'

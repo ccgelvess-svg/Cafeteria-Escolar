@@ -14,7 +14,7 @@ import type { CartLine, SaleMode, Student } from '../types'
 
 interface CartPanelProps {
   mode: SaleMode
-  student: Student | null
+  account: Student | null
   cart: CartLine[]
   paymentBusy: boolean
   canUndo: boolean
@@ -29,7 +29,7 @@ interface CartPanelProps {
 
 export function CartPanel({
   mode,
-  student,
+  account,
   cart,
   paymentBusy,
   canUndo,
@@ -51,9 +51,9 @@ export function CartPanel({
           <p className="font-bold text-slate-500">
             {mode === 'free'
               ? 'Venta libre (pago en efectivo)'
-              : student
-                ? `${student.name} · ${student.course}`
-                : 'Selecciona un estudiante'}
+              : account
+                ? `${account.name} · ${account.course}`
+                : mode === 'teacher' ? 'Selecciona un profesor' : 'Selecciona un estudiante'}
           </p>
         </div>
         <button
@@ -150,16 +150,16 @@ export function CartPanel({
         <div className="mt-2 grid gap-2">
           <div className="flex items-center justify-between rounded-lg bg-indigo-50 px-3 py-2">
             <span className="font-bold text-indigo-900">Saldo disponible</span>
-            <strong className="text-xl text-indigo-950">{formatCurrency(student?.balance ?? 0)}</strong>
+            <strong className="text-xl text-indigo-950">{formatCurrency(account?.balance ?? 0)}</strong>
           </div>
           <button
             className="inline-flex min-h-14 items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-4 text-lg font-black text-white shadow-md transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={!student || cart.length === 0}
+            disabled={!account || cart.length === 0}
             onClick={onPrimaryAction}
             type="button"
           >
             <ClipboardList aria-hidden="true" className="size-6" />
-            Registrar consumo
+            {mode === 'teacher' ? 'Registrar fiado' : 'Registrar consumo'}
           </button>
           <button
             className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-lg font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
@@ -184,7 +184,7 @@ export function CartPanel({
         </button>
         <button
           className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-2 font-bold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
-          disabled={mode === 'student' && !student}
+          disabled={mode !== 'free' && !account}
           onClick={onShowHistory}
           type="button"
         >

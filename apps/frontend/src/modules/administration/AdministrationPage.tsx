@@ -8,6 +8,7 @@ import { ReportsSection } from './sections/ReportsSection'
 import { SalesSection } from './sections/SalesSection'
 import { SettingsSection } from './sections/SettingsSection'
 import { StudentsManagementSection } from './sections/StudentsManagementSection'
+import { TeachersManagementSection } from './sections/TeachersManagementSection'
 import { UsersSection } from './sections/UsersSection'
 import { InventorySection } from '../inventory'
 import type { AdministrationSection } from './types'
@@ -18,6 +19,7 @@ export function AdministrationPage() {
   const sections: Record<AdministrationSection, React.ReactNode> = {
     dashboard: <DashboardSection />,
     students: <StudentsManagementSection />,
+    teachers: <TeachersManagementSection />,
     balances: <BalancesSection />,
     inventory: <InventorySection />,
     users: <UsersSection />,

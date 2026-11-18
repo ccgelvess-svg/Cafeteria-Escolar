@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 
-export type SaleMode = 'free' | 'student'
+export type SaleMode = 'free' | 'student' | 'teacher'
 
 export interface Product {
   id: string

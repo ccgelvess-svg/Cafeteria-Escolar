@@ -46,16 +46,19 @@ let syncInFlight: Promise<void> | null = null
 async function send(operation: PendingSaleOperation) {
   const validationError = pendingSaleValidationError(operation)
   if (validationError) throw new Error(validationError)
-  const rpc = operation.kind === 'cash-sale' ? 'record_cash_sale' : 'record_student_sale'
-  const params = operation.kind === 'cash-sale'
-    ? {
+  let request: { rpc: string; params: Record<string, unknown> }
+  switch (operation.kind) {
+    case 'cash-sale':
+      request = { rpc: 'record_cash_sale', params: {
         p_sale_id: operation.saleId,
         p_total_amount: operation.totalAmount,
         p_items: operation.items,
         p_idempotency_key: operation.idempotencyKey,
         p_cash_register_id: operation.cashRegisterId,
-      }
-    : {
+      } }
+      break
+    case 'student-sale':
+      request = { rpc: 'record_student_sale', params: {
         p_sale_id: operation.saleId,
         p_student_id: operation.studentId,
         p_total_amount: operation.totalAmount,
@@ -63,8 +66,25 @@ async function send(operation: PendingSaleOperation) {
         p_device_id: operation.deviceId,
         p_idempotency_key: operation.idempotencyKey,
         p_cash_register_id: operation.cashRegisterId,
-      }
-  const { error } = await requireSupabase().rpc(rpc, params)
+      } }
+      break
+    case 'teacher-sale':
+      request = { rpc: 'record_teacher_sale', params: {
+        p_sale_id: operation.saleId,
+        p_teacher_id: operation.teacherId,
+        p_total_amount: operation.totalAmount,
+        p_items: operation.items,
+        p_device_id: operation.deviceId,
+        p_idempotency_key: operation.idempotencyKey,
+        p_cash_register_id: operation.cashRegisterId,
+      } }
+      break
+    default: {
+      const exhaustive: never = operation
+      throw new Error(`Tipo de venta pendiente desconocido: ${String(exhaustive)}`)
+    }
+  }
+  const { error } = await requireSupabase().rpc(request.rpc, request.params)
   if (error) throw new Error(error.message || 'No fue posible sincronizar la venta.')
 }
 

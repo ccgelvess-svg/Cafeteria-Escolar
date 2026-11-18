@@ -1,5 +1,6 @@
 import { requireSupabase } from '../../infrastructure/supabase/client'
 import { getDeviceId, STUDENTS_CHANGED_EVENT } from '../students'
+import { TEACHERS_CHANGED_EVENT } from '../teachers'
 import { INVENTORY_CHANGED_EVENT } from '../inventory'
 import { enqueuePendingSale, isConnectivityError } from '../../infrastructure/sync/outbox'
 
@@ -98,6 +99,47 @@ export async function registerStudentSale(input: {
   return { data, queued: false } satisfies SaleRegistrationResult
 }
 
+export async function registerTeacherSale(input: {
+  cashRegisterId: string
+  teacherId: string
+  totalAmount: number
+  items: SaleItemDraft[]
+  idempotencyKey: string
+}) {
+  const saleId = crypto.randomUUID()
+  const operation = {
+    id: crypto.randomUUID(), kind: 'teacher-sale' as const, saleId,
+    teacherId: input.teacherId, cashRegisterId: input.cashRegisterId,
+    totalAmount: input.totalAmount, items: input.items, deviceId: getDeviceId(),
+    idempotencyKey: input.idempotencyKey, createdAt: new Date().toISOString(), attempts: 0,
+  }
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    enqueuePendingSale(operation)
+    window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
+    return { data: null, queued: true } satisfies SaleRegistrationResult
+  }
+  const { data, error } = await requireSupabase().rpc('record_teacher_sale', {
+    p_sale_id: saleId,
+    p_teacher_id: input.teacherId,
+    p_total_amount: input.totalAmount,
+    p_items: input.items,
+    p_device_id: operation.deviceId,
+    p_idempotency_key: input.idempotencyKey,
+    p_cash_register_id: input.cashRegisterId,
+  })
+  if (error) {
+    const cause = new Error(error.message || 'No fue posible registrar la venta fiada.')
+    if (!isConnectivityError(cause)) throw cause
+    enqueuePendingSale({ ...operation, lastError: cause.message })
+    window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
+    return { data: null, queued: true } satisfies SaleRegistrationResult
+  }
+  window.dispatchEvent(new Event(TEACHERS_CHANGED_EVENT))
+  window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
+  window.dispatchEvent(new Event(SALES_CHANGED_EVENT))
+  return { data, queued: false } satisfies SaleRegistrationResult
+}
+
 export async function registerCashSale(input: {
   cashRegisterId: string
   totalAmount: number
@@ -143,6 +185,7 @@ export async function voidSale(saleId: string, reason: string) {
   if (error) throw new Error(error.message || 'No fue posible anular la venta.')
   window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
   window.dispatchEvent(new Event(STUDENTS_CHANGED_EVENT))
+  window.dispatchEvent(new Event(TEACHERS_CHANGED_EVENT))
   window.dispatchEvent(new Event(SALES_CHANGED_EVENT))
   return data
 }

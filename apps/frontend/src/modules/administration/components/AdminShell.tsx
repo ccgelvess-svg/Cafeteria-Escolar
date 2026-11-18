@@ -3,6 +3,7 @@ import {
   BarChart3,
   BookOpenCheck,
   Boxes,
+  BriefcaseBusiness,
   CircleDollarSign,
   Cloud,
   CloudOff,
@@ -38,6 +39,7 @@ interface NavigationItem {
 const navigation: NavigationItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'students', label: 'Estudiantes', icon: UsersRound },
+  { id: 'teachers', label: 'Profesores', icon: BriefcaseBusiness },
   { id: 'balances', label: 'Saldos y deudas', icon: CircleDollarSign },
   { id: 'inventory', label: 'Inventarios', icon: Boxes },
   { id: 'users', label: 'Usuarios y cajeros', icon: ShieldCheck },
