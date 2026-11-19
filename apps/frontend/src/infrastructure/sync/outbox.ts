@@ -6,6 +6,7 @@ import {
   type PendingSaleOperation,
 } from './outboxState'
 import { drainPersistentSales, listPersistentSales, persistentProductQuantities } from './persistentOutbox'
+import { isOnlineForDataAccess } from './connectivity'
 
 export type { PendingSaleItem, PendingSaleOperation } from './outboxState'
 
@@ -149,7 +150,7 @@ async function send(operation: PendingSaleOperation) {
 export function syncPendingSales() {
   if (syncInFlight) return syncInFlight
   syncInFlight = withCrossTabSyncLock(async () => {
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    if (!isOnlineForDataAccess()) return
     const result = await drainPersistentSales(persistence, browserStorage(), send)
     emitChanged()
     if (result.pending === 0) {
@@ -161,7 +162,7 @@ export function syncPendingSales() {
 }
 
 export function isConnectivityError(cause: unknown) {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return true
+  if (!isOnlineForDataAccess()) return true
   const message = cause instanceof Error ? cause.message : String(cause)
   return /failed to fetch|network|load failed|fetch failed|offline/i.test(message)
 }

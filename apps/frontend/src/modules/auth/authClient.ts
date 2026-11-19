@@ -1,6 +1,7 @@
 import { isSupabaseConfigured, requireSupabase } from '../../infrastructure/supabase/client'
 import { readOfflineSnapshot, writeOfflineSnapshot } from '../../infrastructure/storage/offlineDatabase'
 import { isConnectivityError } from '../../infrastructure/sync/outbox'
+import { isOnlineForDataAccess } from '../../infrastructure/sync/connectivity'
 import { normalizeAuthEmail, signInErrorMessage } from './authErrors'
 import type { AppRole, AuthSession, SessionResult } from './types'
 
@@ -30,7 +31,7 @@ export async function getSession(): Promise<SessionResult> {
   const localUser = sessionData.session?.user
   if (!localUser) return { authenticated: false, configured: true }
 
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (!isOnlineForDataAccess()) {
     const cached = await readVerifiedOfflineSession(localUser.id)
     if (cached) return cached
     throw new Error('La sesión offline no está verificada o venció. Conecta el equipo para validarla.')

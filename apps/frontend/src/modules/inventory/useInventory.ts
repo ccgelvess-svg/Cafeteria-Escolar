@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { INVENTORY_CHANGED_EVENT, listInventoryCategories, listInventoryMovements, listInventoryProducts } from './inventoryRepository'
 import type { InventoryCategory, InventoryMovement, InventoryProduct } from './types'
 import { SYNC_STATUS_EVENT } from '../../infrastructure/sync/outbox'
+import { CONNECTIVITY_STATUS_EVENT } from '../../infrastructure/sync/connectivity'
 
 export function useInventory(cashRegisterId: string, includeHistory = true, includeCosts = true) {
   const [products, setProducts] = useState<InventoryProduct[]>([])
@@ -45,10 +46,12 @@ export function useInventory(cashRegisterId: string, includeHistory = true, incl
     void refresh()
     window.addEventListener(INVENTORY_CHANGED_EVENT, refresh)
     window.addEventListener(SYNC_STATUS_EVENT, refresh)
+    window.addEventListener(CONNECTIVITY_STATUS_EVENT, refresh)
     return () => {
       requestSequence.current += 1
       window.removeEventListener(INVENTORY_CHANGED_EVENT, refresh)
       window.removeEventListener(SYNC_STATUS_EVENT, refresh)
+      window.removeEventListener(CONNECTIVITY_STATUS_EVENT, refresh)
     }
   }, [refresh])
   return { products: loadedRegisterId === cashRegisterId ? products : [], categories,

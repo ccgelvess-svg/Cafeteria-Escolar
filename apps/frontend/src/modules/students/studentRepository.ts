@@ -1,6 +1,7 @@
 import { requireSupabase } from '../../infrastructure/supabase/client'
 import { readOfflineSnapshot, writeOfflineSnapshot } from '../../infrastructure/storage/offlineDatabase'
 import { enqueuePendingSale, isConnectivityError } from '../../infrastructure/sync/outbox'
+import { isOnlineForDataAccess } from '../../infrastructure/sync/connectivity'
 import type { MovementDraft, Student, StudentDraft, StudentMovement } from './types'
 import { normalizeStudentCode, validateStudentFields } from './studentRules'
 
@@ -70,7 +71,7 @@ function notifyChanged() { window.dispatchEvent(new Event(STUDENTS_CHANGED_EVENT
 export async function listStudents(cashRegisterId?: string) {
   const cacheKey = studentsCacheKey(cashRegisterId)
   const cached = await readOfflineSnapshot<Student[]>(cacheKey) ?? []
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (!isOnlineForDataAccess()) {
     if (cached.length > 0) return cached
     throw new Error('No hay estudiantes almacenados para trabajar sin conexión.')
   }
@@ -170,7 +171,7 @@ export async function registerMovement(draft: MovementDraft) {
     notifyChanged()
     return null
   }
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return queue()
+  if (!isOnlineForDataAccess()) return queue()
   const { data, error } = await requireSupabase().rpc('record_student_movement_by_register', {
     p_student_id: draft.studentId,
     p_type: draft.type,
@@ -192,7 +193,7 @@ export async function registerMovement(draft: MovementDraft) {
 export async function listStudentMovements(studentId: string, cashRegisterId: string) {
   const cacheKey = studentMovementsCacheKey(studentId, cashRegisterId)
   const cached = await readOfflineSnapshot<StudentMovement[]>(cacheKey) ?? []
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return cached
+  if (!isOnlineForDataAccess()) return cached
   const { data, error } = await requireSupabase().from('student_movements')
     .select('id,student_id,cash_register_id,occurred_at,type,amount,detail,actor_display_name,device_id,idempotency_key,reverses_movement_id')
     .eq('student_id', studentId).eq('cash_register_id', cashRegisterId)
@@ -209,7 +210,7 @@ export async function listStudentMovements(studentId: string, cashRegisterId: st
 export async function listAllStudentMovements(cashRegisterId: string) {
   const cacheKey = allStudentMovementsCacheKey(cashRegisterId)
   const cached = await readOfflineSnapshot<StudentMovement[]>(cacheKey) ?? []
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return cached
+  if (!isOnlineForDataAccess()) return cached
   const pageSize = 1000
   const movements: StudentMovement[] = []
   for (let offset = 0; ; offset += pageSize) {

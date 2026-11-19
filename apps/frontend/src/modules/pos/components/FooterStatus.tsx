@@ -2,7 +2,7 @@ import { CloudUpload, RefreshCw } from 'lucide-react'
 import { useSyncStatus } from '../../../infrastructure/sync/useSyncStatus'
 
 export function FooterStatus() {
-  const { lastSyncAt, legacyPending, online, pending } = useSyncStatus()
+  const { lastSyncAt, legacyPending, manualOffline, online, pending } = useSyncStatus()
   const lastSync = lastSyncAt
     ? new Intl.DateTimeFormat('es-CO', { hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(lastSyncAt))
     : 'Sin sincronización registrada'
@@ -20,7 +20,7 @@ export function FooterStatus() {
           <RefreshCw aria-hidden="true" className="size-4 text-blue-600" />
           Última sync: <strong>{lastSync}</strong>
         </div>
-        <span className="ml-auto hidden whitespace-nowrap text-xs font-semibold text-slate-400 xl:inline">{online ? 'Conectado a Supabase' : 'Los cambios se conservarán en este dispositivo'}</span>
+        <span className="ml-auto hidden whitespace-nowrap text-xs font-semibold text-slate-400 xl:inline">{online ? 'Conectado a Supabase' : manualOffline ? 'Offline manual: solo datos de este dispositivo' : 'Sin Internet: los cambios se conservarán en este dispositivo'}</span>
       </div>
     </footer>
   )

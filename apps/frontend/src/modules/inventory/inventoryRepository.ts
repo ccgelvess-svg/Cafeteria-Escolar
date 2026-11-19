@@ -1,5 +1,6 @@
 import { requireSupabase } from '../../infrastructure/supabase/client'
 import { pendingProductQuantities } from '../../infrastructure/sync/outbox'
+import { isOnlineForDataAccess } from '../../infrastructure/sync/connectivity'
 import { readOfflineSnapshot, writeOfflineSnapshot } from '../../infrastructure/storage/offlineDatabase'
 import { selectCashRegisterInventory, type ScopedInventoryProduct } from './inventoryScope'
 import type { CategoryDraft, InventoryCategory, InventoryMovement, ProductDraft } from './types'
@@ -70,7 +71,7 @@ function mapAuthorizedProduct(row: AuthorizedProductRow): ScopedInventoryProduct
 export async function listInventoryCategories(cashRegisterId = '') {
   const cacheKey = categoriesCacheKey(cashRegisterId)
   const cached = await readCache<InventoryCategory>(cacheKey)
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (!isOnlineForDataAccess()) {
     if (cached.length > 0) return cached
     throw new Error('No hay categorías almacenadas para trabajar sin conexión.')
   }
@@ -90,7 +91,7 @@ export async function listInventoryProducts(cashRegisterId: string, activeOnly =
   const reserved = await pendingProductQuantities(cashRegisterId)
   const cacheKey = `${PRODUCTS_CACHE_KEY}:${cashRegisterId}`
   const cached = await readCache<ScopedInventoryProduct>(cacheKey)
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (!isOnlineForDataAccess()) {
     if (cached.length > 0) return selectCashRegisterInventory(cached.filter((product) => !activeOnly || product.active), cashRegisterId, reserved)
     throw new Error('No hay productos almacenados para esta caja sin conexión.')
   }
@@ -117,7 +118,7 @@ export async function listInventoryProducts(cashRegisterId: string, activeOnly =
 }
 
 export async function preloadInventoryCatalogs(cashRegisterIds: string[]) {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return
+  if (!isOnlineForDataAccess()) return
   const uniqueIds = [...new Set(cashRegisterIds.filter(Boolean))]
   await Promise.allSettled(uniqueIds.map((cashRegisterId) => Promise.all([
     listInventoryProducts(cashRegisterId, false, false),

@@ -34,7 +34,10 @@ export function TopBar({ activeRegisterId, registers, onSelectRegister }: {
 }) {
   const [now, setNow] = useState(() => new Date())
   const { can, logout } = useAuth()
-  const { online, pending } = useSyncStatus()
+  const { manualOffline, networkOnline, online, pending, setManualOffline } = useSyncStatus()
+  const statusLabel = online
+    ? pending > 0 ? `Sincronizando · ${pending}` : 'En línea'
+    : manualOffline ? `Offline manual · ${pending}` : `Sin conexión · ${pending}`
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 30_000)
@@ -50,10 +53,17 @@ export function TopBar({ activeRegisterId, registers, onSelectRegister }: {
         </div>
 
         <div className="pos-topbar-controls flex min-w-0 items-center gap-2 sm:gap-4">
-          <div aria-label={online ? `${pending} operaciones pendientes` : `Modo offline, ${pending} operaciones pendientes`} className={`flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 py-2 text-sm font-bold shadow-sm sm:px-3 sm:text-base ${online ? 'bg-emerald-600' : 'bg-rose-500'}`}>
+          <button
+            aria-label={manualOffline ? `Desactivar modo offline manual, ${pending} operaciones pendientes` : `Activar modo offline manual, ${pending} operaciones pendientes`}
+            aria-pressed={manualOffline}
+            className={`flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl px-2 py-2 text-sm font-bold shadow-sm transition sm:px-3 sm:text-base ${online ? 'bg-emerald-600 hover:bg-emerald-700' : manualOffline ? 'bg-amber-500 hover:bg-amber-600' : 'bg-rose-500 hover:bg-rose-600'}`}
+            onClick={() => setManualOffline(!manualOffline)}
+            title={manualOffline ? 'Volver a conexión automática y sincronizar' : networkOnline ? 'Trabajar solo con datos locales' : 'Sin conexión real; el modo automático está activo'}
+            type="button"
+          >
             {online ? <Cloud aria-hidden="true" className="size-5" /> : <CloudOff aria-hidden="true" className="size-5" />}
-            <span className="offline-label pos-status-label">{online ? (pending > 0 ? `Sincronizando · ${pending}` : 'En línea') : `Modo offline · ${pending}`}</span>
-          </div>
+            <span className="offline-label pos-status-label">{statusLabel}</span>
+          </button>
 
           {can('admin:access') && <a
             aria-label="Abrir Administración"

@@ -1,9 +1,10 @@
 import { requireSupabase } from '../../infrastructure/supabase/client'
 import { cachePendingStudentConsumption, getDeviceId, STUDENTS_CHANGED_EVENT } from '../students'
-import { TEACHERS_CHANGED_EVENT } from '../teachers'
+import { cachePendingTeacherConsumption, TEACHERS_CHANGED_EVENT } from '../teachers'
 import { INVENTORY_CHANGED_EVENT } from '../inventory'
 import { enqueuePendingSale, isConnectivityError } from '../../infrastructure/sync/outbox'
 import { readOfflineSnapshot, writeOfflineSnapshot } from '../../infrastructure/storage/offlineDatabase'
+import { isOnlineForDataAccess } from '../../infrastructure/sync/connectivity'
 
 export interface SaleItemDraft {
   productId: string
@@ -73,7 +74,7 @@ export async function registerStudentSale(input: {
     deviceId: getDeviceId(), idempotencyKey: input.idempotencyKey,
     createdAt: new Date().toISOString(), attempts: 0,
   }
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (!isOnlineForDataAccess()) {
     const added = await enqueuePendingSale(operation)
     if (added) await cachePendingStudentConsumption({
       operationId: operation.id, studentId: operation.studentId, cashRegisterId: operation.cashRegisterId,
@@ -124,8 +125,13 @@ export async function registerTeacherSale(input: {
     totalAmount: input.totalAmount, items: input.items, deviceId: getDeviceId(),
     idempotencyKey: input.idempotencyKey, createdAt: new Date().toISOString(), attempts: 0,
   }
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    await enqueuePendingSale(operation)
+  if (!isOnlineForDataAccess()) {
+    const added = await enqueuePendingSale(operation)
+    if (added) await cachePendingTeacherConsumption({
+      operationId: operation.id, teacherId: operation.teacherId, cashRegisterId: operation.cashRegisterId,
+      amount: operation.totalAmount, detail: operation.items.map((item) => `${item.quantity}× ${item.productName}`).join(' · '),
+      deviceId: operation.deviceId, idempotencyKey: operation.idempotencyKey, createdAt: operation.createdAt,
+    })
     window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
     return { data: null, queued: true } satisfies SaleRegistrationResult
   }
@@ -141,7 +147,12 @@ export async function registerTeacherSale(input: {
   if (error) {
     const cause = new Error(error.message || 'No fue posible registrar la venta fiada.')
     if (!isConnectivityError(cause)) throw cause
-    await enqueuePendingSale({ ...operation, lastError: cause.message })
+    const added = await enqueuePendingSale({ ...operation, lastError: cause.message })
+    if (added) await cachePendingTeacherConsumption({
+      operationId: operation.id, teacherId: operation.teacherId, cashRegisterId: operation.cashRegisterId,
+      amount: operation.totalAmount, detail: operation.items.map((item) => `${item.quantity}× ${item.productName}`).join(' · '),
+      deviceId: operation.deviceId, idempotencyKey: operation.idempotencyKey, createdAt: operation.createdAt,
+    })
     window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
     return { data: null, queued: true } satisfies SaleRegistrationResult
   }
@@ -163,7 +174,7 @@ export async function registerCashSale(input: {
     cashRegisterId: input.cashRegisterId, totalAmount: input.totalAmount, items: input.items, idempotencyKey: input.idempotencyKey,
     createdAt: new Date().toISOString(), attempts: 0,
   }
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (!isOnlineForDataAccess()) {
     await enqueuePendingSale(operation)
     window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
     return { data: null, queued: true } satisfies SaleRegistrationResult
@@ -229,7 +240,7 @@ export async function listRegisteredSales() {
 
 export async function listActiveCashRegisters() {
   const cached = await readOfflineSnapshot<CashRegisterOption[]>(CASH_REGISTERS_CACHE_KEY) ?? []
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return cached
+  if (!isOnlineForDataAccess()) return cached
   const { data, error } = await requireSupabase().from('cash_registers')
     .select('id,name').eq('active', true).order('name')
   if (error) {

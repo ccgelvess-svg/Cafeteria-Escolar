@@ -1,6 +1,7 @@
 import { requireSupabase } from '../../infrastructure/supabase/client'
 import { readOfflineSnapshot, writeOfflineSnapshot } from '../../infrastructure/storage/offlineDatabase'
 import { enqueuePendingSale, isConnectivityError } from '../../infrastructure/sync/outbox'
+import { isOnlineForDataAccess } from '../../infrastructure/sync/connectivity'
 import { getDeviceId, normalizeStudentCode } from '../students'
 import type { Teacher, TeacherDraft, TeacherMovement, TeacherPaymentDraft, TeacherStatus } from './types'
 
@@ -35,6 +36,10 @@ interface TeacherMovementRow {
 const teacherColumns = 'id,cash_register_id,code,first_name,last_name,net_balance,status,created_at,updated_at'
 const movementColumns = 'id,teacher_id,cash_register_id,occurred_at,type,amount,detail,actor_display_name,device_id,idempotency_key,reverses_movement_id'
 
+function teacherMovementsCacheKey(teacherId: string, cashRegisterId: string) {
+  return `teacher-movements:${cashRegisterId}:${teacherId}`
+}
+
 function integrationError(error: { code?: string; message?: string }, fallback: string) {
   if (error.code === '42P01' || error.code === 'PGRST202' || error.code === 'PGRST205' || error.message?.includes('schema cache')) {
     return new Error('El módulo Profesores está preparado, pero la migración teacher_accounts aún no está aplicada.')
@@ -65,7 +70,7 @@ export async function listTeachers(cashRegisterId: string) {
   if (!cashRegisterId) return []
   const cacheKey = `teachers:${cashRegisterId}`
   const cached = await readOfflineSnapshot<Teacher[]>(cacheKey) ?? []
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (!isOnlineForDataAccess()) {
     if (cached.length > 0) return cached
     throw new Error('No hay profesores almacenados para esta caja.')
   }
@@ -79,6 +84,32 @@ export async function listTeachers(cashRegisterId: string) {
   const teachers = (data as TeacherRow[]).map(mapTeacher)
   try { await writeOfflineSnapshot(cacheKey, teachers.slice(0, 1000)) } catch { /* keep live data available */ }
   return teachers
+}
+
+export async function cachePendingTeacherConsumption(input: {
+  operationId: string
+  teacherId: string
+  cashRegisterId: string
+  amount: number
+  detail: string
+  deviceId: string
+  idempotencyKey: string
+  createdAt: string
+}) {
+  const accountKey = `teachers:${input.cashRegisterId}`
+  const teachers = await readOfflineSnapshot<Teacher[]>(accountKey) ?? []
+  try { await writeOfflineSnapshot(accountKey, teachers.map((teacher) => teacher.id === input.teacherId
+    ? { ...teacher, netBalance: teacher.netBalance - input.amount, updatedAt: input.createdAt }
+    : teacher)) } catch { /* durable sale outbox remains the source of truth */ }
+  const movementKey = teacherMovementsCacheKey(input.teacherId, input.cashRegisterId)
+  const movements = await readOfflineSnapshot<TeacherMovement[]>(movementKey) ?? []
+  const movement: TeacherMovement = {
+    id: input.operationId, teacherId: input.teacherId, cashRegisterId: input.cashRegisterId,
+    occurredAt: input.createdAt, type: 'consumption', amount: -input.amount,
+    detail: input.detail, responsible: 'Pendiente de sincronizar', deviceId: input.deviceId,
+    idempotencyKey: input.idempotencyKey,
+  }
+  try { await writeOfflineSnapshot(movementKey, [movement, ...movements]) } catch { /* outbox remains durable */ }
 }
 
 export async function saveTeacher(draft: TeacherDraft) {
@@ -109,11 +140,19 @@ export async function setTeacherStatus(teacherId: string, status: TeacherStatus)
 }
 
 export async function listTeacherMovements(teacherId: string, cashRegisterId: string) {
+  const cacheKey = teacherMovementsCacheKey(teacherId, cashRegisterId)
+  const cached = await readOfflineSnapshot<TeacherMovement[]>(cacheKey) ?? []
+  if (!isOnlineForDataAccess()) return cached
   const { data, error } = await requireSupabase().from('teacher_movements')
     .select(movementColumns).eq('teacher_id', teacherId).eq('cash_register_id', cashRegisterId)
     .order('occurred_at', { ascending: false })
-  if (error) throw integrationError(error, 'No fue posible consultar los movimientos del profesor.')
-  return (data as TeacherMovementRow[]).map(mapMovement)
+  if (error) {
+    if (cached.length > 0) return cached
+    throw integrationError(error, 'No fue posible consultar los movimientos del profesor.')
+  }
+  const movements = (data as TeacherMovementRow[]).map(mapMovement)
+  try { await writeOfflineSnapshot(cacheKey, movements.slice(0, 500)) } catch { /* live history remains available */ }
+  return movements
 }
 
 export async function registerTeacherPayment(draft: TeacherPaymentDraft) {
@@ -131,11 +170,20 @@ export async function registerTeacherPayment(draft: TeacherPaymentDraft) {
       try { await writeOfflineSnapshot(cacheKey, cached.map((teacher) => teacher.id === draft.teacherId
         ? { ...teacher, netBalance: teacher.netBalance + draft.value, updatedAt: operation.createdAt }
         : teacher)) } catch { /* the durable outbox remains the source of truth */ }
+      const movementKey = teacherMovementsCacheKey(draft.teacherId, draft.cashRegisterId)
+      const movements = await readOfflineSnapshot<TeacherMovement[]>(movementKey) ?? []
+      const pendingMovement: TeacherMovement = {
+        id: operation.id, teacherId: draft.teacherId, cashRegisterId: draft.cashRegisterId,
+        occurredAt: operation.createdAt, type: draft.type, amount: draft.value,
+        detail: operation.detail, responsible: 'Pendiente de sincronizar', deviceId: operation.deviceId,
+        idempotencyKey: operation.idempotencyKey,
+      }
+      try { await writeOfflineSnapshot(movementKey, [pendingMovement, ...movements]) } catch { /* outbox remains durable */ }
     }
     notifyChanged()
     return null
   }
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return queue()
+  if (!isOnlineForDataAccess()) return queue()
   const { data, error } = await requireSupabase().rpc('record_teacher_movement', {
     p_teacher_id: draft.teacherId,
     p_type: draft.type,

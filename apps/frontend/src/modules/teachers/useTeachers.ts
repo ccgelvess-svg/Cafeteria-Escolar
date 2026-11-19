@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { SYNC_STATUS_EVENT } from '../../infrastructure/sync/outbox'
+import { CONNECTIVITY_STATUS_EVENT } from '../../infrastructure/sync/connectivity'
 import { listTeachers, TEACHERS_CHANGED_EVENT } from './teacherRepository'
 import type { Teacher } from './types'
 
@@ -19,9 +20,11 @@ export function useTeachers(cashRegisterId: string) {
     void refresh()
     window.addEventListener(TEACHERS_CHANGED_EVENT, refresh)
     window.addEventListener(SYNC_STATUS_EVENT, refresh)
+    window.addEventListener(CONNECTIVITY_STATUS_EVENT, refresh)
     return () => {
       window.removeEventListener(TEACHERS_CHANGED_EVENT, refresh)
       window.removeEventListener(SYNC_STATUS_EVENT, refresh)
+      window.removeEventListener(CONNECTIVITY_STATUS_EVENT, refresh)
     }
   }, [refresh])
 
