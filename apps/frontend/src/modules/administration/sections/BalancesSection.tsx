@@ -6,13 +6,16 @@ import { accountTotals, filterAccountMovements } from '../balancesRules'
 import type { MovementFilter } from '../balancesRules'
 import { formatAdminCurrency } from '../format'
 import { AdminDialog, EmptyState, PageHeader } from '../components/AdminUi'
+import { listActiveCashRegisters, type CashRegisterOption } from '../../sales'
 
 const labels: Record<StudentMovement['type'], string> = {
   consumption: 'Consumo', 'top-up': 'Recarga', 'debt-payment': 'Abono', reversal: 'Reverso',
 }
 
 export function BalancesSection() {
-  const { students, loading: studentsLoading, error: studentsError } = useStudents()
+  const [registers, setRegisters] = useState<CashRegisterOption[]>([])
+  const [cashRegisterId, setCashRegisterId] = useState('')
+  const { students, loading: studentsLoading, error: studentsError } = useStudents(cashRegisterId)
   const [movements, setMovements] = useState<StudentMovement[]>([])
   const [movementsLoading, setMovementsLoading] = useState(true)
   const [movementsError, setMovementsError] = useState('')
@@ -22,14 +25,22 @@ export function BalancesSection() {
   const [adjustmentOpen, setAdjustmentOpen] = useState(false)
 
   useEffect(() => {
+    void listActiveCashRegisters().then((items) => {
+      setRegisters(items)
+      setCashRegisterId((current) => current && items.some((item) => item.id === current) ? current : items[0]?.id ?? '')
+    }).catch((cause) => setMovementsError(cause instanceof Error ? cause.message : 'No fue posible cargar las cajas.'))
+  }, [])
+
+  useEffect(() => {
     let active = true
     setMovementsLoading(true)
-    void listAllStudentMovements()
+    if (!cashRegisterId) { setMovements([]); setMovementsLoading(false); return () => { active = false } }
+    void listAllStudentMovements(cashRegisterId)
       .then((items) => { if (active) { setMovements(items); setMovementsError('') } })
       .catch((cause) => { if (active) { setMovements([]); setMovementsError(cause instanceof Error ? cause.message : 'No fue posible cargar los movimientos.') } })
       .finally(() => { if (active) setMovementsLoading(false) })
     return () => { active = false }
-  }, [students])
+  }, [cashRegisterId, students])
 
   useEffect(() => {
     if (studentId !== 'all' && !students.some((student) => student.id === studentId)) setStudentId('all')
@@ -43,6 +54,7 @@ export function BalancesSection() {
   return <div className="admin-page-stack">
     <PageHeader eyebrow="Cuentas estudiantiles" title="Saldos y deudas" description="Consulta saldos, deudas y movimientos registrados en PostgreSQL." action={<button className="admin-primary-button" disabled={students.length === 0} onClick={() => setAdjustmentOpen(true)} type="button"><SlidersHorizontal aria-hidden="true" className="size-5" />Preparar ajuste</button>} />
     {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700" role="alert">{error}</div>}
+    <section className="admin-card"><label className="admin-field max-w-md">Colegio / caja<select className="admin-select" onChange={(event) => { setCashRegisterId(event.target.value); setStudentId('all') }} value={cashRegisterId}><option value="">Seleccionar caja</option>{registers.map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}</select></label></section>
     <section className="grid gap-3 sm:grid-cols-3">
       <article className="admin-card"><p className="text-sm font-bold text-slate-500">Saldo consultado</p><p className="mt-2 text-2xl font-black text-emerald-700">{formatAdminCurrency(totals.balance)}</p></article>
       <article className="admin-card"><p className="text-sm font-bold text-slate-500">Deuda consultada</p><p className="mt-2 text-2xl font-black text-rose-700">{formatAdminCurrency(totals.debt)}</p></article>

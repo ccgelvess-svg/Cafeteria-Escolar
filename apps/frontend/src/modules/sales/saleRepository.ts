@@ -1,8 +1,9 @@
 import { requireSupabase } from '../../infrastructure/supabase/client'
-import { getDeviceId, STUDENTS_CHANGED_EVENT } from '../students'
+import { cachePendingStudentConsumption, getDeviceId, STUDENTS_CHANGED_EVENT } from '../students'
 import { TEACHERS_CHANGED_EVENT } from '../teachers'
 import { INVENTORY_CHANGED_EVENT } from '../inventory'
 import { enqueuePendingSale, isConnectivityError } from '../../infrastructure/sync/outbox'
+import { readOfflineSnapshot, writeOfflineSnapshot } from '../../infrastructure/storage/offlineDatabase'
 
 export interface SaleItemDraft {
   productId: string
@@ -51,7 +52,7 @@ export interface SalesReport {
 }
 
 export const SALES_CHANGED_EVENT = 'cafeteria:sales-changed'
-const CASH_REGISTERS_CACHE_KEY = 'cafeteria:cash-registers:v1'
+const CASH_REGISTERS_CACHE_KEY = 'cash-registers:active'
 
 export interface SaleRegistrationResult {
   data: unknown
@@ -73,7 +74,12 @@ export async function registerStudentSale(input: {
     createdAt: new Date().toISOString(), attempts: 0,
   }
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    enqueuePendingSale(operation)
+    const added = await enqueuePendingSale(operation)
+    if (added) await cachePendingStudentConsumption({
+      operationId: operation.id, studentId: operation.studentId, cashRegisterId: operation.cashRegisterId,
+      amount: operation.totalAmount, detail: operation.items.map((item) => `${item.quantity}× ${item.productName}`).join(' · '),
+      deviceId: operation.deviceId, idempotencyKey: operation.idempotencyKey, createdAt: operation.createdAt,
+    })
     window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
     return { data: null, queued: true } satisfies SaleRegistrationResult
   }
@@ -89,7 +95,12 @@ export async function registerStudentSale(input: {
   if (error) {
     const cause = new Error(error.message || 'No fue posible registrar la venta.')
     if (!isConnectivityError(cause)) throw cause
-    enqueuePendingSale({ ...operation, lastError: cause.message })
+    const added = await enqueuePendingSale({ ...operation, lastError: cause.message })
+    if (added) await cachePendingStudentConsumption({
+      operationId: operation.id, studentId: operation.studentId, cashRegisterId: operation.cashRegisterId,
+      amount: operation.totalAmount, detail: operation.items.map((item) => `${item.quantity}× ${item.productName}`).join(' · '),
+      deviceId: operation.deviceId, idempotencyKey: operation.idempotencyKey, createdAt: operation.createdAt,
+    })
     window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
     return { data: null, queued: true } satisfies SaleRegistrationResult
   }
@@ -114,7 +125,7 @@ export async function registerTeacherSale(input: {
     idempotencyKey: input.idempotencyKey, createdAt: new Date().toISOString(), attempts: 0,
   }
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    enqueuePendingSale(operation)
+    await enqueuePendingSale(operation)
     window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
     return { data: null, queued: true } satisfies SaleRegistrationResult
   }
@@ -130,7 +141,7 @@ export async function registerTeacherSale(input: {
   if (error) {
     const cause = new Error(error.message || 'No fue posible registrar la venta fiada.')
     if (!isConnectivityError(cause)) throw cause
-    enqueuePendingSale({ ...operation, lastError: cause.message })
+    await enqueuePendingSale({ ...operation, lastError: cause.message })
     window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
     return { data: null, queued: true } satisfies SaleRegistrationResult
   }
@@ -153,7 +164,7 @@ export async function registerCashSale(input: {
     createdAt: new Date().toISOString(), attempts: 0,
   }
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    enqueuePendingSale(operation)
+    await enqueuePendingSale(operation)
     window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
     return { data: null, queued: true } satisfies SaleRegistrationResult
   }
@@ -167,7 +178,7 @@ export async function registerCashSale(input: {
   if (error) {
     const cause = new Error(error.message || 'No fue posible registrar la venta en efectivo.')
     if (!isConnectivityError(cause)) throw cause
-    enqueuePendingSale({ ...operation, lastError: cause.message })
+    await enqueuePendingSale({ ...operation, lastError: cause.message })
     window.dispatchEvent(new Event(INVENTORY_CHANGED_EVENT))
     return { data: null, queued: true } satisfies SaleRegistrationResult
   }
@@ -217,13 +228,7 @@ export async function listRegisteredSales() {
 }
 
 export async function listActiveCashRegisters() {
-  const storage = typeof window === 'undefined' ? null : window.localStorage
-  const cached = (() => {
-    try {
-      const parsed: unknown = JSON.parse(storage?.getItem(CASH_REGISTERS_CACHE_KEY) ?? '[]')
-      return Array.isArray(parsed) ? parsed as CashRegisterOption[] : []
-    } catch { return [] }
-  })()
+  const cached = await readOfflineSnapshot<CashRegisterOption[]>(CASH_REGISTERS_CACHE_KEY) ?? []
   if (typeof navigator !== 'undefined' && !navigator.onLine) return cached
   const { data, error } = await requireSupabase().from('cash_registers')
     .select('id,name').eq('active', true).order('name')
@@ -233,7 +238,7 @@ export async function listActiveCashRegisters() {
   }
   const registers = data as CashRegisterOption[]
   const boundedRegisters = registers.slice(0, 20)
-  storage?.setItem(CASH_REGISTERS_CACHE_KEY, JSON.stringify(boundedRegisters))
+  try { await writeOfflineSnapshot(CASH_REGISTERS_CACHE_KEY, boundedRegisters) } catch { /* keep live registers available */ }
   return boundedRegisters
 }
 

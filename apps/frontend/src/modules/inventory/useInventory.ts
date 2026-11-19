@@ -21,7 +21,7 @@ export function useInventory(cashRegisterId: string, includeHistory = true, incl
     setLoading(true)
     const results = await Promise.allSettled([
       listInventoryProducts(cashRegisterId, false, includeCosts),
-      listInventoryCategories(),
+      listInventoryCategories(cashRegisterId),
       includeHistory ? listInventoryMovements(cashRegisterId) : Promise.resolve([]),
     ] as const)
     if (sequence !== requestSequence.current) return

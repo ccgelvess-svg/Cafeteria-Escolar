@@ -31,7 +31,7 @@ import { parseStudentPaymentValue, studentPaymentSignature } from './studentPaym
 import { canUseCashRegister, useAuth } from '../auth'
 import { createIdempotencyKey, listStudentMovements, registerMovement, splitBalance, useStudents } from '../students'
 import { listActiveCashRegisters, registerCashSale, registerStudentSale, registerTeacherSale, type CashRegisterOption } from '../sales'
-import { useInventory } from '../inventory'
+import { preloadInventoryCatalogs, useInventory } from '../inventory'
 import { listTeacherMovements, registerTeacherPayment, useTeachers } from '../teachers'
 
 const initialCart: CartLine[] = []
@@ -93,7 +93,7 @@ export function PosPage() {
   const pendingTeacherSale = useRef<CashPaymentAttempt | null>(null)
   const pendingStudentPayment = useRef<CashPaymentAttempt | null>(null)
   const studentPaymentInFlight = useRef(false)
-  const { students: studentAccounts } = useStudents()
+  const { students: studentAccounts } = useStudents(activeRegisterId)
   const { teachers: teacherAccounts, loading: teacherLoading, error: teacherError } = useTeachers(mode === 'teacher' ? activeRegisterId : '')
   const { products: inventoryProducts, categories: inventoryCategories, loading: inventoryLoading, error: inventoryError } = useInventory(activeRegisterId, false, false)
   const { session, can } = useAuth()
@@ -116,8 +116,10 @@ export function PosPage() {
 
   useEffect(() => {
     void listActiveCashRegisters()
-      .then((items) => {
-        setRegisters(session ? items.filter((item) => canUseCashRegister(session.user.role, session.user.cashRegisterId, item.id)) : [])
+      .then(async (items) => {
+        const allowed = session ? items.filter((item) => canUseCashRegister(session.user.role, session.user.cashRegisterId, item.id)) : []
+        await preloadInventoryCatalogs(allowed.map((item) => item.id))
+        setRegisters(allowed)
         setRegisterError('')
       })
       .catch((cause) => setRegisterError(cause instanceof Error ? cause.message : 'No fue posible cargar las cajas.'))
@@ -247,7 +249,7 @@ export function PosPage() {
       return
     }
     const movementType = studentPaymentStudent.debt > 0 ? 'debt-payment' : 'top-up'
-    if (paymentAccountMode === 'teacher' && !activeRegister) {
+    if (!activeRegister) {
       setStudentPaymentError('Selecciona una caja activa antes de registrar el abono.')
       return
     }
@@ -273,6 +275,7 @@ export function PosPage() {
       } else {
         await registerMovement({
           studentId: studentPaymentStudent.accountId,
+          cashRegisterId: activeRegister!.id,
           type: movementType,
           value: amount,
           detail: movementType === 'debt-payment' ? 'Abono a cuenta' : 'Recarga de saldo',
@@ -415,9 +418,9 @@ export function PosPage() {
   }
 
   async function showStudentHistory() {
-    if (!selectedStudent) return
+    if (!selectedStudent || !activeRegister) return
     try {
-      const movements = await listStudentMovements(selectedStudent.accountId)
+      const movements = await listStudentMovements(selectedStudent.accountId, activeRegister.id)
       const message = movements.length === 0 ? 'Este estudiante todavía no tiene movimientos.' : movements.slice(0, 5).map((movement) => `${new Date(movement.occurredAt).toLocaleString('es-CO')} · ${movement.detail} · ${formatCurrency(movement.amount)}`).join('\n')
       setDialog({ kind: 'history', title: `Historial de ${selectedStudent.name}`, message })
     } catch (cause) {

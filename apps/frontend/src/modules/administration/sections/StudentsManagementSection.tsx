@@ -6,6 +6,7 @@ import type { Student, StudentDraft, StudentMovement } from '../../students'
 import { formatAdminCurrency } from '../format'
 import { AdminDialog, EmptyState, PageHeader, SearchField, StatusPill } from '../components/AdminUi'
 import { useAuth } from '../../auth'
+import { listActiveCashRegisters, type CashRegisterOption } from '../../sales'
 
 const emptyStudent: StudentDraft = { code: '', firstName: '', lastName: '', grade: '5°', group: 'A' }
 const movementLabels = { consumption: 'Consumo', 'top-up': 'Recarga', 'debt-payment': 'Abono', reversal: 'Reverso' } as const
@@ -13,7 +14,9 @@ const fullName = (student: Student) => `${student.firstName} ${student.lastName}
 
 export function StudentsManagementSection() {
   const { session } = useAuth()
-  const { students, loading, error: loadError, refresh } = useStudents()
+  const [registers, setRegisters] = useState<CashRegisterOption[]>([])
+  const [cashRegisterId, setCashRegisterId] = useState('')
+  const { students, loading, error: loadError, refresh } = useStudents(cashRegisterId)
   const [query, setQuery] = useState('')
   const [grade, setGrade] = useState('Todos')
   const [status, setStatus] = useState('Todos')
@@ -30,6 +33,13 @@ export function StudentsManagementSection() {
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
 
+  useEffect(() => {
+    void listActiveCashRegisters().then((items) => {
+      setRegisters(items)
+      setCashRegisterId((current) => current && items.some((item) => item.id === current) ? current : items[0]?.id ?? '')
+    }).catch((cause) => setMessage(cause instanceof Error ? cause.message : 'No fue posible cargar las cajas.'))
+  }, [])
+
   const account = students.find((item) => item.id === accountId) ?? null
   const statusStudent = students.find((item) => item.id === statusId) ?? null
   const financeStudent = students.find((item) => item.id === financeId) ?? null
@@ -45,8 +55,8 @@ export function StudentsManagementSection() {
 
   useEffect(() => {
     if (!accountId) return
-    void listStudentMovements(accountId).then(setMovements).catch((cause) => setMessage(cause instanceof Error ? cause.message : 'No fue posible cargar los movimientos.'))
-  }, [accountId, students])
+    void listStudentMovements(accountId, cashRegisterId).then(setMovements).catch((cause) => setMessage(cause instanceof Error ? cause.message : 'No fue posible cargar los movimientos.'))
+  }, [accountId, cashRegisterId, students])
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true); setMessage('')
@@ -63,7 +73,7 @@ export function StudentsManagementSection() {
   }
   async function submitMovement() {
     if (!financeStudent) return
-    if (await run(() => registerMovement({ studentId: financeStudent.id, type: movementType, value: Number(movementValue), detail: movementDetail.trim() || (movementType === 'top-up' ? 'Recarga administrativa' : 'Abono a cuenta'), responsible: session?.user.displayName ?? '', idempotencyKey: createIdempotencyKey('admin') }))) {
+    if (await run(() => registerMovement({ studentId: financeStudent.id, cashRegisterId, type: movementType, value: Number(movementValue), detail: movementDetail.trim() || (movementType === 'top-up' ? 'Recarga administrativa' : 'Abono a cuenta'), responsible: session?.user.displayName ?? '', idempotencyKey: createIdempotencyKey('admin') }))) {
       setFinanceId(null); setConfirmMovement(false); setMovementValue(''); setMovementDetail('')
     }
   }
@@ -77,8 +87,8 @@ export function StudentsManagementSection() {
     const { student, movement } = reversal
     setBusy(true); setMessage('')
     try {
-      await reverseMovement(student.id, movement.id, session?.user.displayName ?? '')
-      setMovements(await listStudentMovements(student.id))
+      await reverseMovement(student.id, movement.id, cashRegisterId, session?.user.displayName ?? '')
+      setMovements(await listStudentMovements(student.id, cashRegisterId))
       await refresh()
       setReversal(null); setAccountId(student.id)
     } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'No fue posible reversar el movimiento.') }
@@ -88,6 +98,7 @@ export function StudentsManagementSection() {
   return <div className="admin-page-stack">
     <PageHeader eyebrow="Gestión académica" title="Estudiantes" description="Administra estudiantes y sus cuentas protegidas en PostgreSQL." action={<button className="admin-primary-button" onClick={() => { setEditor({ ...emptyStudent }); setMessage('') }} type="button"><Plus aria-hidden="true" className="size-5" />Nuevo estudiante</button>} />
     {(message || loadError) && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700" role="alert">{message || loadError}</div>}
+    <section className="admin-card"><label className="admin-field max-w-md">Colegio / caja<select className="admin-select" onChange={(event) => { setCashRegisterId(event.target.value); setAccountId(null); setFinanceId(null); setMessage('') }} value={cashRegisterId}><option value="">Seleccionar caja</option>{registers.map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}</select></label></section>
     <div className="grid gap-3 sm:grid-cols-3">
       <div className="admin-card"><p className="text-sm font-bold text-slate-500">Registrados</p><p className="mt-1 text-3xl font-black text-slate-950">{students.length}</p></div>
       <div className="admin-card"><p className="text-sm font-bold text-emerald-700">Saldos a favor</p><p className="mt-1 text-2xl font-black text-emerald-800">{formatAdminCurrency(totals.balance)}</p></div>

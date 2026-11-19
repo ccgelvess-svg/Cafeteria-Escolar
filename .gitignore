@@ -46,6 +46,8 @@ apps/frontend/android/captures/
 backups/
 respaldos/
 supabase/.temp/
+/.local-inventory-validation/
+/.local-inventory-validation-current/
 
 # Local student-cleanup audit artifacts (contain personal data)
 scripts/delete_students_after_approval.sql

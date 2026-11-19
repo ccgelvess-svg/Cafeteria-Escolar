@@ -1,4 +1,6 @@
 import { requireSupabase } from '../../infrastructure/supabase/client'
+import { readOfflineSnapshot, writeOfflineSnapshot } from '../../infrastructure/storage/offlineDatabase'
+import { enqueuePendingSale, isConnectivityError } from '../../infrastructure/sync/outbox'
 import { getDeviceId, normalizeStudentCode } from '../students'
 import type { Teacher, TeacherDraft, TeacherMovement, TeacherPaymentDraft, TeacherStatus } from './types'
 
@@ -61,11 +63,22 @@ function notifyChanged() { window.dispatchEvent(new Event(TEACHERS_CHANGED_EVENT
 
 export async function listTeachers(cashRegisterId: string) {
   if (!cashRegisterId) return []
+  const cacheKey = `teachers:${cashRegisterId}`
+  const cached = await readOfflineSnapshot<Teacher[]>(cacheKey) ?? []
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    if (cached.length > 0) return cached
+    throw new Error('No hay profesores almacenados para esta caja.')
+  }
   const { data, error } = await requireSupabase().from('teachers')
     .select(teacherColumns).eq('cash_register_id', cashRegisterId)
     .order('first_name').order('last_name')
-  if (error) throw integrationError(error, 'No fue posible cargar los profesores.')
-  return (data as TeacherRow[]).map(mapTeacher)
+  if (error) {
+    if (cached.length > 0) return cached
+    throw integrationError(error, 'No fue posible cargar los profesores.')
+  }
+  const teachers = (data as TeacherRow[]).map(mapTeacher)
+  try { await writeOfflineSnapshot(cacheKey, teachers.slice(0, 1000)) } catch { /* keep live data available */ }
+  return teachers
 }
 
 export async function saveTeacher(draft: TeacherDraft) {
@@ -104,6 +117,25 @@ export async function listTeacherMovements(teacherId: string, cashRegisterId: st
 }
 
 export async function registerTeacherPayment(draft: TeacherPaymentDraft) {
+  const operation = {
+    id: crypto.randomUUID(), kind: 'teacher-movement' as const, teacherId: draft.teacherId,
+    cashRegisterId: draft.cashRegisterId, movementType: draft.type, value: draft.value,
+    detail: draft.detail.trim(), deviceId: getDeviceId(), idempotencyKey: draft.idempotencyKey,
+    createdAt: new Date().toISOString(), attempts: 0,
+  }
+  const queue = async (lastError?: string) => {
+    const added = await enqueuePendingSale(lastError ? { ...operation, lastError } : operation)
+    if (added) {
+      const cacheKey = `teachers:${draft.cashRegisterId}`
+      const cached = await readOfflineSnapshot<Teacher[]>(cacheKey) ?? []
+      try { await writeOfflineSnapshot(cacheKey, cached.map((teacher) => teacher.id === draft.teacherId
+        ? { ...teacher, netBalance: teacher.netBalance + draft.value, updatedAt: operation.createdAt }
+        : teacher)) } catch { /* the durable outbox remains the source of truth */ }
+    }
+    notifyChanged()
+    return null
+  }
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return queue()
   const { data, error } = await requireSupabase().rpc('record_teacher_movement', {
     p_teacher_id: draft.teacherId,
     p_type: draft.type,
@@ -113,7 +145,11 @@ export async function registerTeacherPayment(draft: TeacherPaymentDraft) {
     p_idempotency_key: draft.idempotencyKey,
     p_cash_register_id: draft.cashRegisterId,
   })
-  if (error) throw integrationError(error, 'No fue posible registrar el abono.')
+  if (error) {
+    const cause = integrationError(error, 'No fue posible registrar el abono.')
+    if (isConnectivityError(cause)) return queue(cause.message)
+    throw cause
+  }
   notifyChanged()
   return mapMovement(data as TeacherMovementRow)
 }

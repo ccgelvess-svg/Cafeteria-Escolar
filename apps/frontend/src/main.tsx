@@ -8,6 +8,12 @@ import './styles/index.css'
 
 cleanupObsoleteLocalCaches()
 
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/service-worker.js')
+  })
+}
+
 const rootElement = document.getElementById('root')
 
 if (!rootElement) {

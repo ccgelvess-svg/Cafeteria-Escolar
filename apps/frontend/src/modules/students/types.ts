@@ -2,6 +2,7 @@ export type StudentStatus = 'active' | 'inactive'
 
 export interface Student {
   id: string
+  cashRegisterId?: string
   code: string
   firstName: string
   lastName: string
@@ -11,7 +12,7 @@ export interface Student {
   status: StudentStatus
   createdAt: string
   updatedAt: string
-  syncStatus: 'synced'
+  syncStatus: 'synced' | 'pending'
 }
 
 export type MovementType = 'consumption' | 'top-up' | 'debt-payment' | 'reversal'
@@ -19,6 +20,7 @@ export type MovementType = 'consumption' | 'top-up' | 'debt-payment' | 'reversal
 export interface StudentMovement {
   id: string
   studentId: string
+  cashRegisterId?: string
   occurredAt: string
   type: MovementType
   amount: number
@@ -27,7 +29,7 @@ export interface StudentMovement {
   deviceId: string
   idempotencyKey: string
   reversesMovementId?: string
-  syncStatus: 'synced'
+  syncStatus: 'synced' | 'pending'
 }
 
 export interface StudentDraft {
@@ -42,7 +44,8 @@ export interface StudentDraft {
 
 export interface MovementDraft {
   studentId: string
-  type: Exclude<MovementType, 'reversal'>
+  cashRegisterId: string
+  type: 'top-up' | 'debt-payment'
   value: number
   detail: string
   responsible: string

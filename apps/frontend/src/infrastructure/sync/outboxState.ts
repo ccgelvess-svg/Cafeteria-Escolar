@@ -8,23 +8,25 @@ export interface PendingSaleItem {
   quantity: number
 }
 
-interface PendingSaleOperationBase {
+interface PendingOperationBase {
   id: string
-  saleId: string
+  saleId?: string
   idempotencyKey: string
   cashRegisterId?: string
-  totalAmount: number
-  items: PendingSaleItem[]
+  totalAmount?: number
+  items?: PendingSaleItem[]
   deviceId?: string
   createdAt: string
   attempts: number
   lastError?: string
 }
 
-export type PendingSaleOperation = PendingSaleOperationBase & (
-  | { kind: 'cash-sale'; studentId?: never; teacherId?: never }
-  | { kind: 'student-sale'; studentId: string; teacherId?: never }
-  | { kind: 'teacher-sale'; studentId?: never; teacherId: string }
+export type PendingSaleOperation = PendingOperationBase & (
+  | { kind: 'cash-sale'; saleId: string; studentId?: never; teacherId?: never; totalAmount: number; items: PendingSaleItem[] }
+  | { kind: 'student-sale'; saleId: string; studentId: string; teacherId?: never; totalAmount: number; items: PendingSaleItem[] }
+  | { kind: 'teacher-sale'; saleId: string; studentId?: never; teacherId: string; totalAmount: number; items: PendingSaleItem[] }
+  | { kind: 'student-movement'; studentId: string; teacherId?: never; movementType: 'top-up' | 'debt-payment'; value: number; detail: string; cashRegisterId: string }
+  | { kind: 'teacher-movement'; studentId?: never; teacherId: string; movementType: 'top-up' | 'debt-payment'; value: number; detail: string; cashRegisterId: string }
 )
 
 export type OutboxStorage = Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<Storage, 'removeItem'>>
@@ -32,7 +34,7 @@ export type OutboxStorage = Pick<Storage, 'getItem' | 'setItem'> & Partial<Pick<
 export const LEGACY_PENDING_SALE_ERROR = 'Venta pendiente anterior sin caja asignada. Requiere revisión manual antes de sincronizar.'
 
 export function pendingSaleValidationError(operation: PendingSaleOperation) {
-  const stored = operation as PendingSaleOperationBase & {
+  const stored = operation as PendingOperationBase & {
     kind?: unknown
     studentId?: unknown
     teacherId?: unknown
@@ -49,6 +51,14 @@ export function pendingSaleValidationError(operation: PendingSaleOperation) {
     case 'teacher-sale':
       if (typeof stored.teacherId !== 'string' || !stored.teacherId.trim()) return 'Venta docente pendiente sin profesor asignado.'
       return stored.studentId !== undefined ? 'Venta docente pendiente con estudiante cruzado.' : null
+    case 'student-movement':
+      if (typeof stored.studentId !== 'string' || !stored.studentId.trim()) return 'Abono estudiantil pendiente sin estudiante asignado.'
+      if (!['top-up', 'debt-payment'].includes(String((stored as { movementType?: unknown }).movementType))) return 'Abono estudiantil pendiente con tipo inválido.'
+      return null
+    case 'teacher-movement':
+      if (typeof stored.teacherId !== 'string' || !stored.teacherId.trim()) return 'Abono docente pendiente sin profesor asignado.'
+      if (!['top-up', 'debt-payment'].includes(String((stored as { movementType?: unknown }).movementType))) return 'Abono docente pendiente con tipo inválido.'
+      return null
     default:
       return 'Venta pendiente con tipo desconocido.'
   }
@@ -113,7 +123,7 @@ export function pendingProductQuantities(storage: OutboxStorage | null, cashRegi
   const quantities = new Map<string, number>()
   for (const operation of readPendingSales(storage)) {
     if (operation.cashRegisterId !== cashRegisterId) continue
-    for (const item of operation.items) {
+    for (const item of operation.items ?? []) {
       quantities.set(item.productId, (quantities.get(item.productId) ?? 0) + item.quantity)
     }
   }

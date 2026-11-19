@@ -11,7 +11,8 @@
     "dev": "npm run dev --workspace @cafeteria-escolar/frontend",
     "build": "npm run build --workspace @cafeteria-escolar/frontend",
     "typecheck": "npm run typecheck --workspace @cafeteria-escolar/frontend",
-    "test": "node --test apps/frontend/src/modules/students/financialRules.test.ts apps/frontend/src/modules/students/studentRules.test.ts apps/frontend/src/modules/auth/authorization.test.ts apps/frontend/src/modules/auth/authErrors.test.ts apps/frontend/src/modules/pos/cashPayment.test.ts apps/frontend/src/infrastructure/sync/outboxState.test.ts",
+    "supabase:local:prepare": "node supabase/tests/prepare_inventory_rpc_sandbox.mjs",
+    "test": "node --test apps/frontend/src/modules/students/financialRules.test.ts apps/frontend/src/modules/students/studentRules.test.ts apps/frontend/src/modules/auth/authorization.test.ts apps/frontend/src/modules/auth/authErrors.test.ts apps/frontend/src/modules/pos/cashPayment.test.ts apps/frontend/src/infrastructure/sync/outboxState.test.ts apps/frontend/src/modules/inventory/inventoryScope.test.ts",
     "android": "npm run android:sync --workspace @cafeteria-escolar/frontend"
   },
   "engines": {
@@ -19,6 +20,8 @@
     "npm": ">=10.0.0"
   },
   "devDependencies": {
+    "pg": "^8.23.1",
+    "supabase": "^3.0.0",
     "vercel": "^63.1.2"
   }
 }
