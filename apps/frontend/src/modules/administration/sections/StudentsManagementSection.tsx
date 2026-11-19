@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Eye, Pencil, Plus, Power, RotateCcw, WalletCards } from 'lucide-react'
+import { Eye, Pencil, Plus, Power, ReceiptText, RotateCcw, WalletCards } from 'lucide-react'
 
-import { createIdempotencyKey, isMovementReversible, listStudentMovements, matchesStudentSearch, registerMovement, reverseMovement, saveStudent, setStudentStatus, splitBalance, useStudents } from '../../students'
+import { createIdempotencyKey, isMovementReversible, listStudentMovements, matchesStudentSearch, registerMovement, reverseMovement, saveStudent, scopeStudentAccountReceiptMovements, setStudentStatus, splitBalance, useStudents } from '../../students'
 import type { Student, StudentDraft, StudentMovement } from '../../students'
 import { formatAdminCurrency } from '../format'
 import { AdminDialog, EmptyState, PageHeader, SearchField, StatusPill } from '../components/AdminUi'
 import { useAuth } from '../../auth'
 import { listActiveCashRegisters, type CashRegisterOption } from '../../sales'
+import { StudentAccountReceipt, type StudentAccountReceiptData, type StudentAccountReceiptMode } from '../components/StudentAccountReceipt'
 
 const emptyStudent: StudentDraft = { code: '', firstName: '', lastName: '', grade: '5°', group: 'A' }
 const movementLabels = { consumption: 'Consumo', 'top-up': 'Recarga', 'debt-payment': 'Abono', reversal: 'Reverso' } as const
@@ -29,6 +30,8 @@ export function StudentsManagementSection() {
   const [movementDetail, setMovementDetail] = useState('')
   const [confirmMovement, setConfirmMovement] = useState(false)
   const [movements, setMovements] = useState<StudentMovement[]>([])
+  const [receipt, setReceipt] = useState<StudentAccountReceiptData | null>(null)
+  const [receiptMode, setReceiptMode] = useState<StudentAccountReceiptMode>('summary')
   const [reversal, setReversal] = useState<{ student: Student; movement: StudentMovement } | null>(null)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -82,6 +85,35 @@ export function StudentsManagementSection() {
     setMovementValue(''); setMovementDetail(''); setConfirmMovement(false); setMessage('')
   }
 
+  async function openReceipt(student: Student) {
+    const register = registers.find((item) => item.id === cashRegisterId)
+    if (!register) { setMessage('Selecciona el colegio antes de generar el comprobante.'); return }
+    if (student.cashRegisterId !== register.id) {
+      setMessage('Espera a que termine de cargar la cuenta del colegio seleccionado.')
+      return
+    }
+    const requested = {
+      student, cashRegisterId: register.id, schoolName: register.name,
+      generatedAt: new Date().toISOString(), movements: [], loading: true,
+    } satisfies StudentAccountReceiptData
+    setReceiptMode('summary')
+    setReceipt(requested)
+    setMessage('')
+    try {
+      const scopedMovements = scopeStudentAccountReceiptMovements(
+        await listStudentMovements(student.id, register.id), student.id, register.id,
+      )
+      setReceipt((current) => current?.student.id === student.id && current.cashRegisterId === register.id
+        ? { ...current, movements: scopedMovements, loading: false }
+        : current)
+    } catch (cause) {
+      const error = cause instanceof Error ? cause.message : 'No fue posible generar el comprobante.'
+      setReceipt((current) => current?.student.id === student.id && current.cashRegisterId === register.id
+        ? { ...current, loading: false, error }
+        : current)
+    }
+  }
+
   async function confirmReversal() {
     if (!reversal) return
     const { student, movement } = reversal
@@ -98,7 +130,7 @@ export function StudentsManagementSection() {
   return <div className="admin-page-stack">
     <PageHeader eyebrow="Gestión académica" title="Estudiantes" description="Administra estudiantes y sus cuentas protegidas en PostgreSQL." action={<button className="admin-primary-button" onClick={() => { setEditor({ ...emptyStudent }); setMessage('') }} type="button"><Plus aria-hidden="true" className="size-5" />Nuevo estudiante</button>} />
     {(message || loadError) && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700" role="alert">{message || loadError}</div>}
-    <section className="admin-card"><label className="admin-field max-w-md">Colegio / caja<select className="admin-select" onChange={(event) => { setCashRegisterId(event.target.value); setAccountId(null); setFinanceId(null); setMessage('') }} value={cashRegisterId}><option value="">Seleccionar caja</option>{registers.map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}</select></label></section>
+    <section className="admin-card"><label className="admin-field max-w-md">Colegio / caja<select className="admin-select" onChange={(event) => { setCashRegisterId(event.target.value); setAccountId(null); setFinanceId(null); setReceipt(null); setMessage('') }} value={cashRegisterId}><option value="">Seleccionar caja</option>{registers.map((register) => <option key={register.id} value={register.id}>{register.name}</option>)}</select></label></section>
     <div className="grid gap-3 sm:grid-cols-3">
       <div className="admin-card"><p className="text-sm font-bold text-slate-500">Registrados</p><p className="mt-1 text-3xl font-black text-slate-950">{students.length}</p></div>
       <div className="admin-card"><p className="text-sm font-bold text-emerald-700">Saldos a favor</p><p className="mt-1 text-2xl font-black text-emerald-800">{formatAdminCurrency(totals.balance)}</p></div>
@@ -106,7 +138,7 @@ export function StudentsManagementSection() {
     </div>
     <section className="admin-card">
       <div className="grid gap-3 md:grid-cols-[1fr_11rem_11rem]"><SearchField onChange={setQuery} placeholder="Buscar por nombre, código o grado" value={query} /><select aria-label="Filtrar por grado" className="admin-select" onChange={(event) => setGrade(event.target.value)} value={grade}>{grades.map((item) => <option key={item}>{item}</option>)}</select><select aria-label="Filtrar por estado" className="admin-select" onChange={(event) => setStatus(event.target.value)} value={status}><option>Todos</option><option value="active">Activos</option><option value="inactive">Inactivos</option></select></div>
-      <div className="admin-table-wrap mt-4"><table className="admin-table"><thead><tr><th>Estudiante</th><th>Código</th><th>Curso</th><th>Saldo</th><th>Deuda</th><th>Estado</th><th className="text-right">Acciones</th></tr></thead><tbody>{filtered.map((student) => { const split = splitBalance(student.netBalance); return <tr key={student.id}><td><strong>{fullName(student)}</strong></td><td>{student.code}</td><td>{student.grade} {student.group}</td><td className="font-black text-emerald-700">{formatAdminCurrency(split.balance)}</td><td className="font-black text-rose-600">{formatAdminCurrency(split.debt)}</td><td><StatusPill active={student.status === 'active'} /></td><td><div className="flex justify-end gap-1"><button aria-label={`Ver movimientos de ${fullName(student)}`} className="admin-icon-button" onClick={() => setAccountId(student.id)} title="Ver movimientos" type="button"><Eye aria-hidden="true" className="size-4" /></button><button aria-label={`Recargar o abonar a ${fullName(student)}`} className="admin-icon-button" onClick={() => openFinance(student)} title="Recargar / Abonar" type="button"><WalletCards aria-hidden="true" className="size-4" /></button><button aria-label={`Editar ${fullName(student)}`} className="admin-icon-button" onClick={() => setEditor({ id: student.id, code: student.code, firstName: student.firstName, lastName: student.lastName, grade: student.grade, group: student.group, status: student.status })} title="Editar" type="button"><Pencil aria-hidden="true" className="size-4" /></button><button aria-label={`Cambiar estado de ${fullName(student)}`} className="admin-icon-button" onClick={() => setStatusId(student.id)} title="Activar / Desactivar" type="button"><Power aria-hidden="true" className="size-4" /></button></div></td></tr> })}</tbody></table></div>
+      <div className="admin-table-wrap mt-4"><table className="admin-table"><thead><tr><th>Estudiante</th><th>Código</th><th>Curso</th><th>Saldo</th><th>Deuda</th><th>Estado</th><th className="text-right">Acciones</th></tr></thead><tbody>{filtered.map((student) => { const split = splitBalance(student.netBalance); return <tr key={student.id}><td><strong>{fullName(student)}</strong></td><td>{student.code}</td><td>{student.grade} {student.group}</td><td className="font-black text-emerald-700">{formatAdminCurrency(split.balance)}</td><td className="font-black text-rose-600">{formatAdminCurrency(split.debt)}</td><td><StatusPill active={student.status === 'active'} /></td><td><div className="flex justify-end gap-1"><button aria-label={`Ver movimientos de ${fullName(student)}`} className="admin-icon-button" onClick={() => setAccountId(student.id)} title="Ver movimientos" type="button"><Eye aria-hidden="true" className="size-4" /></button><button aria-label={`Generar comprobante de ${fullName(student)}`} className="admin-icon-button" disabled={student.cashRegisterId !== cashRegisterId} onClick={() => void openReceipt(student)} title="Comprobante" type="button"><ReceiptText aria-hidden="true" className="size-4" /></button><button aria-label={`Recargar o abonar a ${fullName(student)}`} className="admin-icon-button" onClick={() => openFinance(student)} title="Recargar / Abonar" type="button"><WalletCards aria-hidden="true" className="size-4" /></button><button aria-label={`Editar ${fullName(student)}`} className="admin-icon-button" onClick={() => setEditor({ id: student.id, code: student.code, firstName: student.firstName, lastName: student.lastName, grade: student.grade, group: student.group, status: student.status })} title="Editar" type="button"><Pencil aria-hidden="true" className="size-4" /></button><button aria-label={`Cambiar estado de ${fullName(student)}`} className="admin-icon-button" onClick={() => setStatusId(student.id)} title="Activar / Desactivar" type="button"><Power aria-hidden="true" className="size-4" /></button></div></td></tr> })}</tbody></table></div>
       {!loading && filtered.length === 0 && <EmptyState>No hay estudiantes que coincidan con los filtros.</EmptyState>}
     </section>
 
@@ -121,6 +153,8 @@ export function StudentsManagementSection() {
     <AdminDialog open={Boolean(account)} title="Movimientos financieros" description={account ? `${fullName(account)} · ${account.code}` : ''} onClose={() => setAccountId(null)} size="lg" footer={<button className="admin-primary-button" onClick={() => setAccountId(null)} type="button">Cerrar</button>}>
       {account && <><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl bg-emerald-50 p-4"><p className="text-sm font-bold text-emerald-700">Saldo disponible</p><p className="mt-1 text-2xl font-black text-emerald-900">{formatAdminCurrency(splitBalance(account.netBalance).balance)}</p></div><div className="rounded-xl bg-rose-50 p-4"><p className="text-sm font-bold text-rose-700">Deuda acumulada</p><p className="mt-1 text-2xl font-black text-rose-900">{formatAdminCurrency(splitBalance(account.netBalance).debt)}</p></div></div><div className="admin-table-wrap mt-4"><table className="admin-table"><thead><tr><th>Fecha y hora</th><th>Tipo</th><th>Detalle</th><th>Valor</th><th>Responsable</th><th className="text-right">Acciones</th></tr></thead><tbody>{movements.map((movement) => <tr key={movement.id}><td>{new Intl.DateTimeFormat('es-CO', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(movement.occurredAt))}</td><td>{movementLabels[movement.type]}</td><td>{movement.detail}</td><td className={movement.amount < 0 ? 'font-black text-rose-600' : 'font-black text-emerald-700'}>{formatAdminCurrency(movement.amount)}</td><td>{movement.responsible}</td><td><div className="flex justify-end"><button aria-label={`Reversar movimiento ${movement.id}`} className="admin-icon-button text-rose-600" disabled={!isMovementReversible(movement, movements)} onClick={() => { setReversal({ student: account, movement }); setAccountId(null) }} title="Reversar movimiento" type="button"><RotateCcw aria-hidden="true" className="size-4" /></button></div></td></tr>)}</tbody></table></div>{movements.length === 0 && <EmptyState>Este estudiante todavía no tiene movimientos.</EmptyState>}</>}
     </AdminDialog>
+
+    <StudentAccountReceipt data={receipt} mode={receiptMode} onClose={() => setReceipt(null)} onModeChange={setReceiptMode} />
 
     <AdminDialog open={Boolean(reversal)} title="Confirmar reversión" description={reversal ? `${fullName(reversal.student)} · ${movementLabels[reversal.movement.type]}` : ''} onClose={() => { if (reversal) setAccountId(reversal.student.id); setReversal(null) }} size="sm" footer={<><button className="admin-secondary-button" onClick={() => { if (reversal) setAccountId(reversal.student.id); setReversal(null) }} type="button">Cancelar</button><button className="admin-danger-button" disabled={busy} onClick={() => void confirmReversal()} type="button">Reversar movimiento</button></>}><p className="font-semibold text-slate-600">Se creará un movimiento compensatorio auditable. El registro original permanecerá intacto.</p></AdminDialog>
 

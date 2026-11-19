@@ -520,6 +520,61 @@ textarea:focus-visible {
   }
 }
 
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 4mm;
+  }
+
+  body:has(.student-account-receipt) * {
+    visibility: hidden !important;
+  }
+
+  body:has(.student-account-receipt) .fixed {
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+    background: white !important;
+    backdrop-filter: none !important;
+  }
+
+  body:has(.student-account-receipt) section[role='dialog'] {
+    width: 72mm !important;
+    max-width: none !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  body:has(.student-account-receipt) section[role='dialog'] > header,
+  body:has(.student-account-receipt) section[role='dialog'] > footer,
+  .receipt-screen-controls {
+    display: none !important;
+  }
+
+  body:has(.student-account-receipt) section[role='dialog'] > div {
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .student-account-receipt,
+  .student-account-receipt * {
+    visibility: visible !important;
+  }
+
+  .student-account-receipt {
+    width: 72mm !important;
+    max-width: none !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
+}
+
 @media (min-width: 1280px) {
   .product-grid {
     grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));

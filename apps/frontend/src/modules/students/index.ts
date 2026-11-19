@@ -1,5 +1,6 @@
 export * from './financialRules'
 export * from './studentRepository'
 export * from './studentRules'
+export * from './studentAccountReceipt'
 export * from './types'
 export * from './useStudents'
