@@ -1,18 +1,36 @@
 import { Printer } from 'lucide-react'
 
-import type { Student, StudentMovement } from '../../students'
 import { summarizeStudentAccountReceipt } from '../../students'
 import { formatAdminCurrency } from '../format'
 import { AdminDialog, EmptyState } from './AdminUi'
 
 export type StudentAccountReceiptMode = 'summary' | 'detailed'
 
+export interface StudentAccountReceiptAccount {
+  kind: 'student' | 'teacher'
+  id: string
+  code: string
+  firstName: string
+  lastName: string
+  netBalance: number
+  grade?: string
+  group?: string
+}
+
+export interface StudentAccountReceiptMovement {
+  id: string
+  occurredAt: string
+  type: 'consumption' | 'top-up' | 'debt-payment' | 'reversal'
+  amount: number
+  detail: string
+}
+
 export interface StudentAccountReceiptData {
-  student: Student
+  account: StudentAccountReceiptAccount
   cashRegisterId: string
   schoolName: string
   generatedAt: string
-  movements: StudentMovement[]
+  movements: StudentAccountReceiptMovement[]
   loading: boolean
   error?: string
 }
@@ -35,12 +53,12 @@ export function StudentAccountReceipt({ data, mode, onModeChange, onClose }: {
   onClose: () => void
 }) {
   const movements = data?.movements ?? []
-  const summary = summarizeStudentAccountReceipt(data?.student.netBalance ?? 0, movements)
+  const summary = summarizeStudentAccountReceipt(data?.account.netBalance ?? 0, movements)
 
   return <AdminDialog
     open={Boolean(data)}
     title="Comprobante de estado de cuenta"
-    description={data ? `${data.schoolName} · ${data.student.firstName} ${data.student.lastName}` : ''}
+    description={data ? `${data.schoolName} · ${data.account.firstName} ${data.account.lastName}` : ''}
     onClose={onClose}
     size="lg"
     footer={<>
@@ -62,9 +80,9 @@ export function StudentAccountReceipt({ data, mode, onModeChange, onClose }: {
           <p>{formatDateTime(data.generatedAt)}</p>
         </header>
         <section className="border-b border-dashed border-slate-400 py-3">
-          <p><strong>Estudiante:</strong> {data.student.firstName} {data.student.lastName}</p>
-          <p><strong>Código:</strong> {data.student.code}</p>
-          <p><strong>Curso:</strong> {data.student.grade} {data.student.group}</p>
+          <p><strong>{data.account.kind === 'teacher' ? 'Profesor' : 'Estudiante'}:</strong> {data.account.firstName} {data.account.lastName}</p>
+          <p><strong>Código:</strong> {data.account.code}</p>
+          {data.account.kind === 'student' && <p><strong>Curso:</strong> {data.account.grade} {data.account.group}</p>}
         </section>
         <section className="grid grid-cols-2 gap-x-3 gap-y-2 border-b border-dashed border-slate-400 py-3">
           <span>Compras</span><strong className="text-right">{formatAdminCurrency(summary.purchases)}</strong>

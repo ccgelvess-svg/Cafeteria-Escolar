@@ -93,7 +93,7 @@ export function StudentsManagementSection() {
       return
     }
     const requested = {
-      student, cashRegisterId: register.id, schoolName: register.name,
+      account: { ...student, kind: 'student' as const }, cashRegisterId: register.id, schoolName: register.name,
       generatedAt: new Date().toISOString(), movements: [], loading: true,
     } satisfies StudentAccountReceiptData
     setReceiptMode('summary')
@@ -103,12 +103,12 @@ export function StudentsManagementSection() {
       const scopedMovements = scopeStudentAccountReceiptMovements(
         await listStudentMovements(student.id, register.id), student.id, register.id,
       )
-      setReceipt((current) => current?.student.id === student.id && current.cashRegisterId === register.id
+      setReceipt((current) => current?.account.id === student.id && current.cashRegisterId === register.id
         ? { ...current, movements: scopedMovements, loading: false }
         : current)
     } catch (cause) {
       const error = cause instanceof Error ? cause.message : 'No fue posible generar el comprobante.'
-      setReceipt((current) => current?.student.id === student.id && current.cashRegisterId === register.id
+      setReceipt((current) => current?.account.id === student.id && current.cashRegisterId === register.id
         ? { ...current, loading: false, error }
         : current)
     }

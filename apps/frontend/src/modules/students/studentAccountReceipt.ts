@@ -9,7 +9,7 @@ export function scopeStudentAccountReceiptMovements(
   return movements.filter((movement) => movement.studentId === studentId && movement.cashRegisterId === cashRegisterId)
 }
 
-export function summarizeStudentAccountReceipt(netBalance: number, movements: StudentMovement[]) {
+export function summarizeStudentAccountReceipt(netBalance: number, movements: Array<Pick<StudentMovement, 'type' | 'amount'>>) {
   const split = splitBalance(netBalance)
   return {
     purchases: movements.reduce((total, movement) => movement.type === 'consumption' && movement.amount < 0
