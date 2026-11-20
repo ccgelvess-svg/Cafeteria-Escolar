@@ -320,6 +320,30 @@ textarea:focus-visible {
   display: none;
 }
 
+@media (min-width: 640px) {
+  .category-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 #1e293b;
+    scrollbar-gutter: stable;
+    touch-action: pan-y;
+  }
+
+  .category-scroll::-webkit-scrollbar {
+    display: block;
+    width: 5px;
+  }
+
+  .category-scroll::-webkit-scrollbar-track {
+    border-radius: 999px;
+    background: #1e293b;
+  }
+
+  .category-scroll::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: #94a3b8;
+  }
+}
+
 .product-card {
   scroll-snap-align: start;
 }

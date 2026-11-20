@@ -58,7 +58,7 @@ export function ProductCatalog({
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 sm:flex-row">
-        <div className="category-scroll flex shrink-0 snap-x snap-mandatory justify-start gap-1 overflow-x-auto overscroll-contain rounded-xl bg-slate-800 p-1.5 sm:w-20 sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto" aria-label="Categorías">
+        <div className="category-scroll flex shrink-0 snap-x snap-mandatory justify-start gap-1 overflow-x-auto overscroll-contain rounded-xl bg-slate-800 p-1.5 sm:h-full sm:min-h-0 sm:w-20 sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto sm:overscroll-y-contain sm:snap-y sm:touch-pan-y" aria-label="Categorías">
           {categories.map(({ id, label, icon: Icon }, index) => {
             const selected = category === id
             return (
