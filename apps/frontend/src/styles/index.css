@@ -522,12 +522,18 @@ textarea:focus-visible {
 
 @media print {
   @page {
-    size: 80mm auto;
+    size: 80mm 297mm;
     margin: 4mm;
   }
 
-  body:has(.student-account-receipt) * {
-    visibility: hidden !important;
+  body:has(.student-account-receipt) *:not(:has(.student-account-receipt)):not(.student-account-receipt):not(.student-account-receipt *) {
+    display: none !important;
+  }
+
+  body:has(.student-account-receipt) *:has(.student-account-receipt) {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
 
   body:has(.student-account-receipt) .fixed {
@@ -556,11 +562,6 @@ textarea:focus-visible {
     max-height: none !important;
     overflow: visible !important;
     padding: 0 !important;
-  }
-
-  .student-account-receipt,
-  .student-account-receipt * {
-    visibility: visible !important;
   }
 
   .student-account-receipt {
