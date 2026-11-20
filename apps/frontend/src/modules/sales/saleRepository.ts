@@ -27,6 +27,15 @@ export interface RegisteredSale {
   items: Array<{ productName: string; unitPrice: number; quantity: number; lineTotal: number }>
 }
 
+export interface AccountSale {
+  id: string
+  occurredAt: string
+  totalAmount: number
+  status: 'completed' | 'voided'
+  idempotencyKey: string
+  items: Array<{ productName: string; unitPrice: number; quantity: number; lineTotal: number }>
+}
+
 export interface CashRegisterSummary {
   id: string
   name: string
@@ -236,6 +245,52 @@ export async function listRegisteredSales() {
       items: row.sale_items.map((item) => ({ productName: item.product_name, unitPrice: item.unit_price, quantity: item.quantity, lineTotal: item.line_total })),
     }
   })
+}
+
+export async function listAccountSales(input: {
+  accountKind: 'student' | 'teacher'
+  accountId: string
+  cashRegisterId: string
+}) {
+  const pageSize = 500
+  const sales: AccountSale[] = []
+  const accountColumn = input.accountKind === 'teacher' ? 'teacher_id' : 'student_id'
+
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await requireSupabase().from('sales').select(`
+      id,occurred_at,total_amount,status,idempotency_key,
+      sale_items(product_name,unit_price,quantity,line_total)
+    `)
+      .eq(accountColumn, input.accountId)
+      .eq('cash_register_id', input.cashRegisterId)
+      .order('occurred_at', { ascending: false })
+      .order('id')
+      .range(offset, offset + pageSize - 1)
+    if (error) throw new Error('No fue posible consultar el detalle real de las ventas de esta cuenta y caja.')
+
+    const page = (data as unknown as Array<{
+      id: string
+      occurred_at: string
+      total_amount: number
+      status: AccountSale['status']
+      idempotency_key: string
+      sale_items: Array<{ product_name: string; unit_price: number; quantity: number; line_total: number }>
+    }>).map((row): AccountSale => ({
+      id: row.id,
+      occurredAt: row.occurred_at,
+      totalAmount: row.total_amount,
+      status: row.status,
+      idempotencyKey: row.idempotency_key,
+      items: row.sale_items.map((item) => ({
+        productName: item.product_name,
+        unitPrice: item.unit_price,
+        quantity: item.quantity,
+        lineTotal: item.line_total,
+      })),
+    }))
+    sales.push(...page)
+    if (page.length < pageSize) return sales
+  }
 }
 
 export async function listActiveCashRegisters() {

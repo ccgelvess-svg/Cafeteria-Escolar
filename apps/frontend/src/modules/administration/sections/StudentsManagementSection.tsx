@@ -6,7 +6,7 @@ import type { Student, StudentDraft, StudentMovement } from '../../students'
 import { formatAdminCurrency } from '../format'
 import { AdminDialog, EmptyState, PageHeader, SearchField, StatusPill } from '../components/AdminUi'
 import { useAuth } from '../../auth'
-import { listActiveCashRegisters, type CashRegisterOption } from '../../sales'
+import { listAccountSales, listActiveCashRegisters, type CashRegisterOption } from '../../sales'
 import { StudentAccountReceipt, type StudentAccountReceiptData, type StudentAccountReceiptMode } from '../components/StudentAccountReceipt'
 
 const emptyStudent: StudentDraft = { code: '', firstName: '', lastName: '', grade: '5°', group: 'A' }
@@ -94,17 +94,19 @@ export function StudentsManagementSection() {
     }
     const requested = {
       account: { ...student, kind: 'student' as const }, cashRegisterId: register.id, schoolName: register.name,
-      generatedAt: new Date().toISOString(), movements: [], loading: true,
+      generatedAt: new Date().toISOString(), movements: [], sales: [], loading: true,
     } satisfies StudentAccountReceiptData
     setReceiptMode('summary')
     setReceipt(requested)
     setMessage('')
     try {
-      const scopedMovements = scopeStudentAccountReceiptMovements(
-        await listStudentMovements(student.id, register.id), student.id, register.id,
-      )
+      const [accountMovements, sales] = await Promise.all([
+        listStudentMovements(student.id, register.id),
+        listAccountSales({ accountKind: 'student', accountId: student.id, cashRegisterId: register.id }),
+      ])
+      const scopedMovements = scopeStudentAccountReceiptMovements(accountMovements, student.id, register.id)
       setReceipt((current) => current?.account.id === student.id && current.cashRegisterId === register.id
-        ? { ...current, movements: scopedMovements, loading: false }
+        ? { ...current, movements: scopedMovements, sales, loading: false }
         : current)
     } catch (cause) {
       const error = cause instanceof Error ? cause.message : 'No fue posible generar el comprobante.'

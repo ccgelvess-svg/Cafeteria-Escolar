@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BriefcaseBusiness, Eye, Pencil, Plus, Power, ReceiptText, WalletCards } from 'lucide-react'
 
-import { listActiveCashRegisters, type CashRegisterOption } from '../../sales'
+import { listAccountSales, listActiveCashRegisters, type CashRegisterOption } from '../../sales'
 import { createIdempotencyKey, matchesStudentSearch, splitBalance } from '../../students'
 import {
   listTeacherMovements,
@@ -112,17 +112,19 @@ export function TeachersManagementSection() {
     }
     const requested = {
       account: { ...teacher, kind: 'teacher' as const }, cashRegisterId: register.id,
-      schoolName: register.name, generatedAt: new Date().toISOString(), movements: [], loading: true,
+      schoolName: register.name, generatedAt: new Date().toISOString(), movements: [], sales: [], loading: true,
     } satisfies StudentAccountReceiptData
     setReceiptMode('summary')
     setReceipt(requested)
     setMessage('')
     try {
-      const scopedMovements = scopeTeacherAccountReceiptMovements(
-        await listTeacherMovements(teacher.id, register.id), teacher.id, register.id,
-      )
+      const [accountMovements, sales] = await Promise.all([
+        listTeacherMovements(teacher.id, register.id),
+        listAccountSales({ accountKind: 'teacher', accountId: teacher.id, cashRegisterId: register.id }),
+      ])
+      const scopedMovements = scopeTeacherAccountReceiptMovements(accountMovements, teacher.id, register.id)
       setReceipt((current) => current?.account.id === teacher.id && current.cashRegisterId === register.id
-        ? { ...current, movements: scopedMovements, loading: false }
+        ? { ...current, movements: scopedMovements, sales, loading: false }
         : current)
     } catch (cause) {
       const error = cause instanceof Error ? cause.message : 'No fue posible generar el comprobante.'

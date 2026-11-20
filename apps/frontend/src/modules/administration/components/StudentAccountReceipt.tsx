@@ -1,6 +1,7 @@
 import { Printer } from 'lucide-react'
 
-import { summarizeStudentAccountReceipt } from '../../students'
+import { buildAccountReceiptEntries, summarizeStudentAccountReceipt } from '../../students'
+import type { AccountSale } from '../../sales'
 import { formatAdminCurrency } from '../format'
 import { AdminDialog, EmptyState } from './AdminUi'
 
@@ -23,6 +24,7 @@ export interface StudentAccountReceiptMovement {
   type: 'consumption' | 'top-up' | 'debt-payment' | 'reversal'
   amount: number
   detail: string
+  idempotencyKey: string
 }
 
 export interface StudentAccountReceiptData {
@@ -31,6 +33,7 @@ export interface StudentAccountReceiptData {
   schoolName: string
   generatedAt: string
   movements: StudentAccountReceiptMovement[]
+  sales: AccountSale[]
   loading: boolean
   error?: string
 }
@@ -53,7 +56,9 @@ export function StudentAccountReceipt({ data, mode, onModeChange, onClose }: {
   onClose: () => void
 }) {
   const movements = data?.movements ?? []
+  const sales = data?.sales ?? []
   const summary = summarizeStudentAccountReceipt(data?.account.netBalance ?? 0, movements)
+  const entries = buildAccountReceiptEntries(data?.account.netBalance ?? 0, movements, sales)
 
   return <AdminDialog
     open={Boolean(data)}
@@ -92,11 +97,23 @@ export function StudentAccountReceipt({ data, mode, onModeChange, onClose }: {
         </section>
         {mode === 'detailed' && <section className="border-b border-dashed border-slate-400 py-3">
           <h3 className="mb-2 text-center font-black uppercase">Movimientos</h3>
-          {movements.map((movement) => <div className="border-t border-dotted border-slate-300 py-2 first:border-0" key={movement.id}>
-            <div className="flex justify-between gap-2"><span>{formatDateTime(movement.occurredAt)}</span><strong>{formatAdminCurrency(movement.amount)}</strong></div>
-            <div className="flex justify-between gap-2"><span>{movementLabels[movement.type]}</span><span className="text-right">{movement.detail}</span></div>
-          </div>)}
-          {movements.length === 0 && <p className="text-center">Sin movimientos para esta caja.</p>}
+          {entries.map((entry) => entry.kind === 'sale'
+            ? <div className="border-t border-dotted border-slate-300 py-2 first:border-0" key={entry.id}>
+              <div className="flex justify-between gap-2"><span>{formatDateTime(entry.occurredAt)}</span><strong>Compra{entry.sale.status === 'voided' ? ' anulada' : ''}</strong></div>
+              {entry.sale.items.map((item, index) => <div className="mt-1" key={`${entry.sale.id}:${index}`}>
+                <p className="font-bold">{item.productName}</p>
+                <div className="grid grid-cols-[auto_1fr_auto] gap-1 text-[11px]"><span>{item.quantity} × {formatAdminCurrency(item.unitPrice)}</span><span className="border-b border-dotted border-slate-300" /><span>{formatAdminCurrency(item.lineTotal)}</span></div>
+              </div>)}
+              {entry.sale.items.length === 0 && <p className="mt-1">Sin renglones de venta registrados.</p>}
+              <div className="mt-2 flex justify-between gap-2 font-black"><span>Total compra</span><span>{formatAdminCurrency(entry.sale.totalAmount)}</span></div>
+              <div className="flex justify-between gap-2"><span>Saldo resultante</span><strong>{entry.balanceAfter === undefined ? 'No disponible' : formatAdminCurrency(entry.balanceAfter)}</strong></div>
+            </div>
+            : <div className="border-t border-dotted border-slate-300 py-2 first:border-0" key={entry.id}>
+              <div className="flex justify-between gap-2"><span>{formatDateTime(entry.occurredAt)}</span><strong>{movementLabels[entry.movement.type]}</strong></div>
+              <div className="flex justify-between gap-2"><span className="break-words">{entry.movement.detail}</span><strong>{formatAdminCurrency(entry.movement.amount)}</strong></div>
+              <div className="flex justify-between gap-2"><span>Saldo resultante</span><strong>{formatAdminCurrency(entry.balanceAfter)}</strong></div>
+            </div>)}
+          {entries.length === 0 && <p className="text-center">Sin movimientos para esta caja.</p>}
         </section>}
         <footer className="pt-3 text-center text-[10px]">
           <p>{movements.length} movimiento(s) consultado(s)</p>
